@@ -1,0 +1,37 @@
+# ------------------------------------
+# Swift Package Manager (Root Package)
+# ------------------------------------
+/.build/
+.swiftpm/
+Package.pins
+Package.resolved
+
+# ------------------------------------
+# Xcode (for Example/ app or if pkg opened with Xcode)
+# ------------------------------------
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# Example app build artifacts
+Example/.build
+
+# ------------------------------------
+# macOS & Editor junk
+# ------------------------------------
+.DS_Store
+*.swp
+*.swo
+*.tmp
+
+# ------------------------------------
+# Logs
+# ------------------------------------
+*.log
+
+# ------------------------------------
+# Private Credentials
+# ------------------------------------
+.netrc
