@@ -28,7 +28,7 @@ class MockFirebaseAnalyticsAdapter: FirebaseAnalyticsAdapter {
     var setUserIDWithNilCalled: Bool = false
     var setUserPropertyCalls: [(name: String, value: String)] = []
     var logEventCalls: [(name: String, parameters: [String: Any]?)] = []
-    
+
     func setUserID(_ id: String?) {
         if let id = id {
             setUserIDCalls.append(id)
@@ -36,17 +36,17 @@ class MockFirebaseAnalyticsAdapter: FirebaseAnalyticsAdapter {
             setUserIDWithNilCalled = true
         }
     }
-    
+
     func setUserProperty(_ value: String?, forName name: String) {
         if let value = value {
             setUserPropertyCalls.append((name: name, value: value))
         }
     }
-    
+
     func logEvent(_ event: String, parameters: [String: Any]?) {
         logEventCalls.append((name: event, parameters: parameters))
     }
-    
+
     func getAnalyticsInstance() -> Any? {
         return "MockAnalyticsInstance" // Return a mock instance for testing
     }

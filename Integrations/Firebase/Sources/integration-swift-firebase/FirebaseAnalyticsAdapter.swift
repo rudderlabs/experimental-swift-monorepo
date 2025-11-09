@@ -28,10 +28,10 @@ class DefaultFirebaseAnalyticsAdapter: FirebaseAnalyticsAdapter {
         FirebaseAnalytics.Analytics.setUserProperty(value, forName: forName)
     }
 
-    func logEvent(_ name: String, parameters: [String : Any]?) {
+    func logEvent(_ name: String, parameters: [String: Any]?) {
         FirebaseAnalytics.Analytics.logEvent(name, parameters: parameters)
     }
-    
+
     func getAnalyticsInstance() -> Any? {
         return FirebaseAnalytics.Analytics.self
     }

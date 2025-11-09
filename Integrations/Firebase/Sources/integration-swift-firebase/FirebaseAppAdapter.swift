@@ -19,7 +19,7 @@ protocol FirebaseAppAdapter {
 // MARK: Actual Implementation
 class DefaultFirebaseAppAdapter: FirebaseAppAdapter {
     var isConfigured: Bool { FirebaseApp.app() != nil }
-    
+
     func configure() {
         DispatchQueue.main.sync {
             FirebaseApp.configure()

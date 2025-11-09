@@ -14,12 +14,12 @@ import FirebaseAnalytics
  * This class contains constants, mappings, and helper methods for the Firebase integration.
  */
 class FirebaseUtils {
-    
+
     // MARK: - Reserved Keywords
-    
+
     /// Reserved keywords for identify events
     static let identifyReservedKeywords: Set<String> = ["age", "gender", "interest"]
-    
+
     /// Reserved keywords for track events
     static let firebaseTrackReservedKeywords: Set<String> = [
         "product_id", "name", "category", "quantity", "price", "currency", "value", "revenue",
@@ -27,9 +27,9 @@ class FirebaseUtils {
         "promotion_id", "creative", "affiliation", "share_via", "products", "order_id",
         AnalyticsParameterScreenName
     ]
-    
+
     // MARK: - Ecommerce Event Mapping
-    
+
     /// Ecommerce events mapping
     static let ecommerceEventsMapping: [String: String] = [
         ECommPaymentInfoEntered: AnalyticsEventAddPaymentInfo,
@@ -49,9 +49,9 @@ class FirebaseUtils {
         ECommPromotionClicked: AnalyticsEventSelectPromotion,
         ECommCartViewed: AnalyticsEventViewCart
     ]
-    
+
     // MARK: - Product Properties Mapping
-    
+
     /// Product properties mapping
     static let productPropertiesMapping: [String: String] = [
         "product_id": AnalyticsParameterItemID,
@@ -60,9 +60,9 @@ class FirebaseUtils {
         "quantity": AnalyticsParameterQuantity,
         "price": AnalyticsParameterPrice
     ]
-    
+
     // MARK: - Events with Products
-    
+
     /// Events that support products array
     static let eventWithProductsArray: Set<String> = [
         AnalyticsEventBeginCheckout,
@@ -71,7 +71,7 @@ class FirebaseUtils {
         AnalyticsEventViewItemList,
         AnalyticsEventViewCart
     ]
-    
+
     /// Events that support products at root level
     static let eventWithProductsAtRoot: Set<String> = [
         AnalyticsEventAddToCart,
@@ -79,9 +79,9 @@ class FirebaseUtils {
         AnalyticsEventViewItem,
         AnalyticsEventRemoveFromCart
     ]
-    
+
     // MARK: - Ecommerce Property Mapping
-    
+
     /// Ecommerce property mapping
     static let ecommercePropertyMapping: [String: String] = [
         "payment_method": AnalyticsParameterPaymentType,
@@ -93,9 +93,9 @@ class FirebaseUtils {
         "affiliation": AnalyticsParameterAffiliation,
         "share_via": AnalyticsParameterMethod
     ]
-    
+
     // MARK: - Ecommerce Event Constants
-    
+
     /// Ecommerce event name constants
     static let ECommPaymentInfoEntered = "Payment Info Entered"
     static let ECommProductAdded = "Product Added"
@@ -113,9 +113,9 @@ class FirebaseUtils {
     static let ECommPromotionViewed = "Promotion Viewed"
     static let ECommPromotionClicked = "Promotion Clicked"
     static let ECommCartViewed = "Cart Viewed"
-    
+
     // MARK: - Helper Methods
-    
+
     /**
      * Trims and formats a key for Firebase
      */
@@ -123,16 +123,16 @@ class FirebaseUtils {
         let trimmedKey = key.lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: " ", with: "_")
-        
+
         // Limit to 40 characters (Firebase parameter name limit)
         let maxLength = 40
         if trimmedKey.count > maxLength {
             return String(trimmedKey.prefix(maxLength))
         }
-        
+
         return trimmedKey
     }
-    
+
     /**
      * Checks if a value is empty
      */
@@ -140,22 +140,22 @@ class FirebaseUtils {
         if value == nil {
             return true
         }
-        
+
         if let stringValue = value as? String {
             return stringValue.isEmpty
         }
-        
+
         if let dictValue = value as? [String: Any] {
             return dictValue.isEmpty
         }
-        
+
         if let arrayValue = value as? [Any] {
             return arrayValue.isEmpty
         }
-        
+
         return false
     }
-    
+
     /**
      * Checks if a value is a number
      */
@@ -163,14 +163,14 @@ class FirebaseUtils {
         if value is NSNumber {
             return true
         }
-        
+
         if let stringValue = value as? String {
             return Double(stringValue) != nil
         }
-        
+
         return false
     }
-    
+
     /**
      * Converts a value to Double
      * Helper method for numeric conversions
@@ -179,14 +179,14 @@ class FirebaseUtils {
         if let numberValue = value as? NSNumber {
             return numberValue.doubleValue
         }
-        
+
         if let stringValue = value as? String, let doubleValue = Double(stringValue) {
             return doubleValue
         }
-        
+
         return 0.0
     }
-    
+
     /**
      * Converts a value to Int
      * Helper method for numeric conversions
@@ -195,12 +195,11 @@ class FirebaseUtils {
         if let numberValue = value as? NSNumber {
             return numberValue.intValue
         }
-        
+
         if let stringValue = value as? String, let intValue = Int(stringValue) {
             return intValue
         }
-        
+
         return 0
     }
 }
-
