@@ -8,7 +8,7 @@
 @testable import integration_swift_firebase
 
 /**
- * Mock Adapter for FirebaseApp
+ * Mock implementation for adapter of FirebaseApp
  */
 class MockFirebaseAppAdapter: FirebaseAppAdapter {
     var configured = false
@@ -17,5 +17,37 @@ class MockFirebaseAppAdapter: FirebaseAppAdapter {
 
     func configure() {
         configured = true
+    }
+}
+
+/**
+ * Mock implementation for adapter of FirebaseAnalytics
+ */
+class MockFirebaseAnalyticsAdapter: FirebaseAnalyticsAdapter {
+    var setUserIDCalls: [String] = []
+    var setUserIDWithNilCalled: Bool = false
+    var setUserPropertyCalls: [(name: String, value: String)] = []
+    var logEventCalls: [(name: String, parameters: [String: Any]?)] = []
+    
+    func setUserID(_ id: String?) {
+        if let id = id {
+            setUserIDCalls.append(id)
+        } else {
+            setUserIDWithNilCalled = true
+        }
+    }
+    
+    func setUserProperty(_ value: String?, forName name: String) {
+        if let value = value {
+            setUserPropertyCalls.append((name: name, value: value))
+        }
+    }
+    
+    func logEvent(_ event: String, parameters: [String: Any]?) {
+        logEventCalls.append((name: event, parameters: parameters))
+    }
+    
+    func getAnalyticsInstance() -> Any? {
+        return "MockAnalyticsInstance" // Return a mock instance for testing
     }
 }
