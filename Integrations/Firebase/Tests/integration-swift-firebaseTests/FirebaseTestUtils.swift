@@ -51,3 +51,9 @@ class MockFirebaseAnalyticsAdapter: FirebaseAnalyticsAdapter {
         return "MockAnalyticsInstance" // Return a mock instance for testing
     }
 }
+
+extension Dictionary where Key == String {
+    static func + (lhs: [Key: Value], rhs: [Key: Value]) -> [Key: Value] {
+        return lhs.merging(rhs) { (_, new) in new }
+    }
+}
