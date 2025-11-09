@@ -19,7 +19,7 @@ protocol FirebaseAnalyticsAdapter {
 }
 
 // MARK: Actual Implementation
-class FirebaseAnalyticsAdapterImpl: FirebaseAnalyticsAdapter {
+class DefaultFirebaseAnalyticsAdapter: FirebaseAnalyticsAdapter {
     func setUserID(_ id: String?) {
         FirebaseAnalytics.Analytics.setUserID(id)
     }

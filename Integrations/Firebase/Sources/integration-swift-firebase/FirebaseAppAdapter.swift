@@ -17,7 +17,7 @@ protocol FirebaseAppAdapter {
 }
 
 // MARK: Actual Implementation
-class FirebaseAppAdapterImpl: FirebaseAppAdapter {
+class DefaultFirebaseAppAdapter: FirebaseAppAdapter {
     var isConfigured: Bool { FirebaseApp.app() != nil }
     
     func configure() {
