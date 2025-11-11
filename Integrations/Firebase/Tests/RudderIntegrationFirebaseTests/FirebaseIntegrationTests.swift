@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 @testable import RudderStackAnalytics
-@testable import integration_swift_firebase
+@testable import RudderIntegrationFirebase
 
 struct FirebaseIntegrationTests {
 
