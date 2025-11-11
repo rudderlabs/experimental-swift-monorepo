@@ -21,7 +21,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/firebase/firebase-ios-sdk", .upToNextMajor(from: "12.5.0")),
         // we will change the dependency rudder-sdk-swift
-        .package(url: "https://github.com/rudderlabs/rudder-sdk-swift.git", branch: "chore/test-firebase-integration")
+        .package(url: "https://github.com/rudderlabs/rudder-sdk-swift.git", branch: "feat/sdk-502-make-standard-integration-public")
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
