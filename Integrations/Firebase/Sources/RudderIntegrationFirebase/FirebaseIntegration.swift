@@ -244,9 +244,9 @@ extension FirebaseIntegration {
      */
     private func addConstantParamsForECommerceEvent(params: inout [String: Any], eventName: String) {
         switch eventName {
-        case FirebaseUtils.ECommProductShared:
+        case ECommerceEvents.productShared:
             params[AnalyticsParameterContentType] = "product"
-        case FirebaseUtils.ECommCartShared:
+        case ECommerceEvents.cartShared:
             params[AnalyticsParameterContentType] = "cart"
         default:
             break
