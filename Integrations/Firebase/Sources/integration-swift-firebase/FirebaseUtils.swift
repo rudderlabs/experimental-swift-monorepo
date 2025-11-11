@@ -7,6 +7,7 @@
 
 import Foundation
 import FirebaseAnalytics
+import RudderStackAnalytics
 
 /**
  * Firebase Utilities for RudderStack Firebase Integration
@@ -32,22 +33,22 @@ class FirebaseUtils {
 
     /// Ecommerce events mapping
     static let ecommerceEventsMapping: [String: String] = [
-        ECommPaymentInfoEntered: AnalyticsEventAddPaymentInfo,
-        ECommProductAdded: AnalyticsEventAddToCart,
-        ECommProductAddedToWishList: AnalyticsEventAddToWishlist,
-        ECommCheckoutStarted: AnalyticsEventBeginCheckout,
-        ECommOrderCompleted: AnalyticsEventPurchase,
-        ECommOrderRefunded: AnalyticsEventRefund,
-        ECommProductsSearched: AnalyticsEventSearch,
-        ECommCartShared: AnalyticsEventShare,
-        ECommProductShared: AnalyticsEventShare,
-        ECommProductViewed: AnalyticsEventViewItem,
-        ECommProductListViewed: AnalyticsEventViewItemList,
-        ECommProductRemoved: AnalyticsEventRemoveFromCart,
-        ECommProductClicked: AnalyticsEventSelectContent,
-        ECommPromotionViewed: AnalyticsEventViewPromotion,
-        ECommPromotionClicked: AnalyticsEventSelectPromotion,
-        ECommCartViewed: AnalyticsEventViewCart
+        ECommerceEvents.paymentInfoEntered: AnalyticsEventAddPaymentInfo,
+        ECommerceEvents.productAdded: AnalyticsEventAddToCart,
+        ECommerceEvents.productAddedToWishList: AnalyticsEventAddToWishlist,
+        ECommerceEvents.checkoutStarted: AnalyticsEventBeginCheckout,
+        ECommerceEvents.orderCompleted: AnalyticsEventPurchase,
+        ECommerceEvents.orderRefunded: AnalyticsEventRefund,
+        ECommerceEvents.productsSearched: AnalyticsEventSearch,
+        ECommerceEvents.cartShared: AnalyticsEventShare,
+        ECommerceEvents.productShared: AnalyticsEventShare,
+        ECommerceEvents.productViewed: AnalyticsEventViewItem,
+        ECommerceEvents.productListViewed: AnalyticsEventViewItemList,
+        ECommerceEvents.productRemoved: AnalyticsEventRemoveFromCart,
+        ECommerceEvents.productClicked: AnalyticsEventSelectContent,
+        ECommerceEvents.promotionViewed: AnalyticsEventViewPromotion,
+        ECommerceEvents.promotionClicked: AnalyticsEventSelectPromotion,
+        ECommerceEvents.cartViewed: AnalyticsEventViewCart
     ]
 
     // MARK: - Product Properties Mapping
@@ -93,26 +94,6 @@ class FirebaseUtils {
         "affiliation": AnalyticsParameterAffiliation,
         "share_via": AnalyticsParameterMethod
     ]
-
-    // MARK: - Ecommerce Event Constants
-
-    /// Ecommerce event name constants
-    static let ECommPaymentInfoEntered = "Payment Info Entered"
-    static let ECommProductAdded = "Product Added"
-    static let ECommProductAddedToWishList = "Product Added to Wishlist"
-    static let ECommCheckoutStarted = "Checkout Started"
-    static let ECommOrderCompleted = "Order Completed"
-    static let ECommOrderRefunded = "Order Refunded"
-    static let ECommProductsSearched = "Products Searched"
-    static let ECommCartShared = "Cart Shared"
-    static let ECommProductShared = "Product Shared"
-    static let ECommProductViewed = "Product Viewed"
-    static let ECommProductListViewed = "Product List Viewed"
-    static let ECommProductRemoved = "Product Removed"
-    static let ECommProductClicked = "Product Clicked"
-    static let ECommPromotionViewed = "Promotion Viewed"
-    static let ECommPromotionClicked = "Promotion Clicked"
-    static let ECommCartViewed = "Cart Viewed"
 
     // MARK: - Helper Methods
 
