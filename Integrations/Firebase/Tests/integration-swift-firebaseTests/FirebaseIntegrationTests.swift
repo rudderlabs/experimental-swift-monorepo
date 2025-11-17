@@ -271,7 +271,7 @@ struct FirebaseIntegrationTests {
         #expect(mockAnalyticsAdapter.logEventCalls[0].name == "Custom_Event_Name")
         let parameters = mockAnalyticsAdapter.logEventCalls[0].parameters
         #expect(parameters?["key1"] as? String == "value1")
-        #expect(parameters?["key2"] as? Double == 123.0)
+        #expect(parameters?["key2"] as? Int == 123)
     }
 
     @Test("Given ecommerce event Product Added, when track is called, then Firebase add_to_cart event is logged")
@@ -506,8 +506,8 @@ struct FirebaseIntegrationTests {
         let parameters = mockAnalyticsAdapter.logEventCalls[0].parameters
         #expect(parameters?["screen_name"] as? String == "Product List")
         #expect(parameters?["category"] == nil)
-        #expect(parameters?["product_count"] as? Double == 5)
-        #expect(parameters?["is_logged_in"] as? Double == 1.0) // boolean is treated as a number value
+        #expect(parameters?["product_count"] as? Int == 5)
+        #expect(parameters?["is_logged_in"] as? Bool == true)
         #expect(parameters?["loading_time"] as? Double == 2.5)
     }
 
@@ -650,9 +650,9 @@ struct FirebaseIntegrationTests {
         #expect(mockAnalyticsAdapter.logEventCalls.count == 1)
         let parameters = mockAnalyticsAdapter.logEventCalls[0].parameters
         #expect(parameters?["string_value"] as? String == "text")
-        #expect(parameters?["int_value"] as? Double == 42) // int value is converted to double
+        #expect(parameters?["int_value"] as? Int == 42)
         #expect(parameters?["double_value"] as? Double == 3.14)
-        #expect(parameters?["bool_value"] as? Double == 1) // boolean value is converted to double
+        #expect(parameters?["bool_value"] as? Bool == true)
         // nil_value should be filtered out
     }
 

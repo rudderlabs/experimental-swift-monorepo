@@ -185,3 +185,9 @@ class FirebaseUtils {
         return 0
     }
 }
+
+extension Dictionary where Key == String {
+    static func + (lhs: [Key: Value], rhs: [Key: Value]) -> [Key: Value] {
+        return lhs.merging(rhs) { (_, new) in new }
+    }
+}
