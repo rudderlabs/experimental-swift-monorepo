@@ -101,9 +101,10 @@ class FirebaseUtils {
      * Trims and formats a key for Firebase
      */
     static func getTrimKey(_ key: String) -> String {
-        let trimmedKey = key.lowercased()
+        let trimmedKey = key
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "-", with: "_")
 
         // Limit to 40 characters (Firebase parameter name limit)
         let maxLength = 40
@@ -182,5 +183,11 @@ class FirebaseUtils {
         }
 
         return 0
+    }
+}
+
+extension Dictionary where Key == String {
+    static func + (lhs: [Key: Value], rhs: [Key: Value]) -> [Key: Value] {
+        return lhs.merging(rhs) { (_, new) in new }
     }
 }

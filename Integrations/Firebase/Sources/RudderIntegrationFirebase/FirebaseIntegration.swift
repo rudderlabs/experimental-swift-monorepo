@@ -13,7 +13,7 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
     final let analyticsAdapter: FirebaseAnalyticsAdapter
     final let appAdapter: FirebaseAppAdapter
 
-    internal init(
+    init(
         analyticsAdapter: FirebaseAnalyticsAdapter,
         appAdapter: FirebaseAppAdapter
     ) {
@@ -137,12 +137,11 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
             return
         }
 
-        // Create parameters dictionary and set screen name
-        var params: [String: Any] = [:]
-        params[AnalyticsParameterScreenName] = screenName
-
         // Attach custom properties
-        attachAllCustomProperties(params: &params, properties: payload.properties?.dictionary?.rawDictionary, isECommerceEvent: false)
+        var params = attachAllCustomProperties(properties: payload.properties?.dictionary?.rawDictionary, isECommerceEvent: false)
+
+        // set screen name
+        params[AnalyticsParameterScreenName] = screenName
 
         // Log screen view event
         LoggerAnalytics.debug("FirebaseIntegration: Logged screen view \"\(screenName)\" to Firebase with properties: \(payload.properties?.dictionary?.rawDictionary ?? [:])")
@@ -168,8 +167,7 @@ extension FirebaseIntegration {
      */
     private func handleApplicationOpenedEvent(properties: [String: Any]?) {
         let firebaseEvent = AnalyticsEventAppOpen
-        var params: [String: Any] = [:]
-        makeFirebaseEvent(firebaseEvent: firebaseEvent, params: &params, properties: properties, isECommerceEvent: false)
+        makeFirebaseEvent(firebaseEvent: firebaseEvent, properties: properties, isECommerceEvent: false)
     }
 
     /**
@@ -180,16 +178,16 @@ extension FirebaseIntegration {
 
         if let properties = properties {
             // Handle special parameter mappings for specific events
-            handleSpecialECommerceParams(firebaseEvent: firebaseEvent, params: &params, properties: properties)
+            params = params + handleSpecialECommerceParams(firebaseEvent: firebaseEvent, properties: properties)
 
             // Add constant parameters for specific events
-            addConstantParamsForECommerceEvent(params: &params, eventName: eventName)
+            params = params + addConstantParamsForECommerceEvent(eventName: eventName)
 
             // Handle ecommerce-specific properties (revenue, products, currency, etc.)
-            handleECommerceEventProperties(params: &params, properties: properties, firebaseEvent: firebaseEvent)
+            params = params + handleECommerceEventProperties(properties: properties, firebaseEvent: firebaseEvent)
         }
 
-        makeFirebaseEvent(firebaseEvent: firebaseEvent, params: &params, properties: properties, isECommerceEvent: true)
+        makeFirebaseEvent(firebaseEvent: firebaseEvent, params: params, properties: properties, isECommerceEvent: true)
     }
 
     /**
@@ -197,23 +195,24 @@ extension FirebaseIntegration {
      */
     private func handleCustomEvent(eventName: String, properties: [String: Any]?) {
         let firebaseEvent = FirebaseUtils.getTrimKey(eventName)
-        var params: [String: Any] = [:]
-        makeFirebaseEvent(firebaseEvent: firebaseEvent, params: &params, properties: properties, isECommerceEvent: false)
+        makeFirebaseEvent(firebaseEvent: firebaseEvent, properties: properties, isECommerceEvent: false)
     }
 
     /**
      * Makes Firebase event with parameters
      */
-    private func makeFirebaseEvent(firebaseEvent: String, params: inout [String: Any], properties: [String: Any]?, isECommerceEvent: Bool) {
-        attachAllCustomProperties(params: &params, properties: properties, isECommerceEvent: isECommerceEvent)
+    private func makeFirebaseEvent(firebaseEvent: String, params: [String: Any] = [:], properties: [String: Any]?, isECommerceEvent: Bool) {
+        let customParams = attachAllCustomProperties(properties: properties, isECommerceEvent: isECommerceEvent)
         LoggerAnalytics.debug("FirebaseIntegration: Logged \"\(firebaseEvent)\" to Firebase with properties: \(properties ?? [:])")
-        self.analyticsAdapter.logEvent(firebaseEvent, parameters: params)
+        self.analyticsAdapter.logEvent(firebaseEvent, parameters: customParams + params)
     }
 
     /**
      * Handles special parameter mappings for ecommerce events
      */
-    private func handleSpecialECommerceParams(firebaseEvent: String, params: inout [String: Any], properties: [String: Any]) {
+    private func handleSpecialECommerceParams(firebaseEvent: String, properties: [String: Any]) -> [String: Any] {
+        var params = [String: Any]()
+
         // Handle share events
         if firebaseEvent == AnalyticsEventShare {
             if let cartId = properties["cart_id"], !FirebaseUtils.isEmpty(cartId) {
@@ -237,26 +236,34 @@ extension FirebaseIntegration {
             }
             params[AnalyticsParameterContentType] = "product"
         }
+
+        return params
     }
 
     /**
      * Adds constant parameters for ecommerce events
      */
-    private func addConstantParamsForECommerceEvent(params: inout [String: Any], eventName: String) {
+    private func addConstantParamsForECommerceEvent(eventName: String) -> [String: Any] {
+        var params = [String: Any]()
+
         switch eventName {
         case ECommerceEvents.productShared:
             params[AnalyticsParameterContentType] = "product"
         case ECommerceEvents.cartShared:
             params[AnalyticsParameterContentType] = "cart"
         default:
-            break
+            return params
         }
+
+        return params
     }
 
     /**
      * Handles ecommerce-specific properties like revenue, products, currency
      */
-    private func handleECommerceEventProperties(params: inout [String: Any], properties: [String: Any], firebaseEvent: String) {
+    private func handleECommerceEventProperties(properties: [String: Any], firebaseEvent: String) -> [String: Any] {
+        var params = [String: Any]()
+
         // Handle revenue/value mapping
         if let revenue = properties["revenue"], FirebaseUtils.isNumber(revenue) {
             params[AnalyticsParameterValue] = FirebaseUtils.doubleValue(revenue)
@@ -304,6 +311,8 @@ extension FirebaseIntegration {
             // Backward compatibility
             params["order_id"] = "\(orderId)"
         }
+
+        return params
     }
 
     /**
@@ -364,8 +373,9 @@ extension FirebaseIntegration {
     /**
      * Attaches all custom properties to Firebase parameters
      */
-    private func attachAllCustomProperties(params: inout [String: Any], properties: [String: Any]?, isECommerceEvent: Bool) {
-        guard let properties = properties, !properties.isEmpty else { return }
+    private func attachAllCustomProperties(properties: [String: Any]?, isECommerceEvent: Bool) -> [String: Any] {
+        var params = [String: Any]()
+        guard let properties = properties, !properties.isEmpty else { return params }
 
         for (key, value) in properties {
             let firebaseKey = FirebaseUtils.getTrimKey(key)
@@ -376,20 +386,36 @@ extension FirebaseIntegration {
             }
 
             // Handle different value types
-            if FirebaseUtils.isNumber(value) {
-                params[firebaseKey] = FirebaseUtils.doubleValue(value)
-            } else if let stringValue = value as? String {
+            switch value {
+            case let intValue as Int:
+                params[firebaseKey] = intValue
+
+            case let doubleValue as Double:
+                params[firebaseKey] = doubleValue
+
+            case let floatValue as Float:
+                params[firebaseKey] = Double(floatValue)
+
+            case let boolValue as Bool:
+                params[firebaseKey] = boolValue
+
+            case let numberValue as NSNumber:
+                params[firebaseKey] = numberValue.doubleValue
+
+            case let stringValue as String:
                 // Truncate strings longer than 100 characters
                 let truncatedValue = stringValue.count > 100 ? String(stringValue.prefix(100)) : stringValue
                 params[firebaseKey] = truncatedValue
-            } else {
+
+            default:
                 let convertedString = "\(value)"
-                // Only add if length is <= 100
                 if convertedString.count <= 100 {
                     params[firebaseKey] = convertedString
                 }
             }
         }
+
+        return params
     }
 
 }

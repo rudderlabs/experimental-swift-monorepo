@@ -172,12 +172,10 @@ struct FirebaseIntegrationTests {
 
         #expect(propertyNames.contains("email"))
         #expect(propertyNames.contains("name"))
-
-        #expect(propertyNames.contains("isvip"))
+        #expect(propertyNames.contains("isVip"))
 
         #expect(propertyValues.contains("test@example.com"))
         #expect(propertyValues.contains("Test User"))
-
         #expect(propertyValues.contains("true"))
     }
 
@@ -218,11 +216,11 @@ struct FirebaseIntegrationTests {
         firebaseIntegration.identify(payload: identifyEvent)
 
         let propertyNames = mockAnalyticsAdapter.setUserPropertyCalls.map { $0.name }
-        #expect(propertyNames.contains("user-name"))
+        #expect(propertyNames.contains("user_name"))
         #expect(propertyNames.contains("user_email"))
         #expect(propertyNames.contains("user.age"))
-        #expect(propertyNames.contains("user_profession"))
-        #expect(propertyNames.contains("user_address"))
+        #expect(propertyNames.contains("User_Profession"))
+        #expect(propertyNames.contains("User_Address"))
     }
 
     // MARK: - Track Event Tests
@@ -263,10 +261,10 @@ struct FirebaseIntegrationTests {
         firebaseIntegration.track(payload: trackEvent)
 
         #expect(mockAnalyticsAdapter.logEventCalls.count == 1)
-        #expect(mockAnalyticsAdapter.logEventCalls[0].name == "custom_event_name")
+        #expect(mockAnalyticsAdapter.logEventCalls[0].name == "Custom_Event_Name")
         let parameters = mockAnalyticsAdapter.logEventCalls[0].parameters
         #expect(parameters?["key1"] as? String == "value1")
-        #expect(parameters?["key2"] as? Double == 123.0)
+        #expect(parameters?["key2"] as? Int == 123)
     }
 
     @Test("Given ecommerce event Product Added, when track is called, then Firebase add_to_cart event is logged")
@@ -501,8 +499,8 @@ struct FirebaseIntegrationTests {
         let parameters = mockAnalyticsAdapter.logEventCalls[0].parameters
         #expect(parameters?["screen_name"] as? String == "Product List")
         #expect(parameters?["category"] == nil)
-        #expect(parameters?["product_count"] as? Double == 5)
-        #expect(parameters?["is_logged_in"] as? Double == 1.0) // boolean is treated as a number value
+        #expect(parameters?["product_count"] as? Int == 5)
+        #expect(parameters?["is_logged_in"] as? Bool == true)
         #expect(parameters?["loading_time"] as? Double == 2.5)
     }
 
@@ -591,7 +589,7 @@ struct FirebaseIntegrationTests {
         firebaseIntegration.track(payload: trackEvent)
 
         #expect(mockAnalyticsAdapter.logEventCalls.count == 1)
-        #expect(mockAnalyticsAdapter.logEventCalls[0].name == "simple_event")
+        #expect(mockAnalyticsAdapter.logEventCalls[0].name == "Simple_Event")
         let parameters = mockAnalyticsAdapter.logEventCalls[0].parameters
         #expect(parameters?.isEmpty == true)
     }
@@ -645,9 +643,9 @@ struct FirebaseIntegrationTests {
         #expect(mockAnalyticsAdapter.logEventCalls.count == 1)
         let parameters = mockAnalyticsAdapter.logEventCalls[0].parameters
         #expect(parameters?["string_value"] as? String == "text")
-        #expect(parameters?["int_value"] as? Double == 42) // int value is converted to double
+        #expect(parameters?["int_value"] as? Int == 42)
         #expect(parameters?["double_value"] as? Double == 3.14)
-        #expect(parameters?["bool_value"] as? Double == 1) // boolean value is converted to double
+        #expect(parameters?["bool_value"] as? Bool == true)
         // nil_value should be filtered out
     }
 
@@ -751,7 +749,7 @@ struct FirebaseIntegrationTests {
 
         // Event tracking
         #expect(mockAnalyticsAdapter.logEventCalls.count == 2) // Custom event + Screen view
-        #expect(mockAnalyticsAdapter.logEventCalls[0].name == "feature_used")
+        #expect(mockAnalyticsAdapter.logEventCalls[0].name == "Feature_Used")
         #expect(mockAnalyticsAdapter.logEventCalls[1].name == "screen_view")
     }
 }
