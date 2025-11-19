@@ -124,9 +124,6 @@ struct MyApp: App {
         
         // Add Firebase integration
         analytics.add(plugin: FirebaseIntegration())
-        
-        // Store analytics instance globally or inject it into your view hierarchy
-        AnalyticsManager.shared.analytics = analytics
     }
     
     var body: some Scene {
