@@ -142,15 +142,16 @@ class FirebaseUtils {
      * Checks if a value is a number
      */
     static func isNumber(_ value: Any?) -> Bool {
-        if value is NSNumber {
+        switch value {
+        case is Int, is Double, is Float, is NSNumber:
             return true
-        }
 
-        if let stringValue = value as? String {
+        case let stringValue as String:
             return Double(stringValue) != nil
-        }
 
-        return false
+        default:
+            return false
+        }
     }
 
     /**

@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import RudderStackAnalytics
+import RudderStackAnalytics
 @testable import RudderIntegrationFirebase
 
 struct FirebaseIntegrationTests {
