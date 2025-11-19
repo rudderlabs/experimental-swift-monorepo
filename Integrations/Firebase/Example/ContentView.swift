@@ -9,7 +9,7 @@ import SwiftUI
 import RudderStackAnalytics
 
 struct ContentView: View {
-    @StateObject private var analyticsManager = AnalyticsManager.shared
+    private var analyticsManager = AnalyticsManager.shared
 
     var body: some View {
         NavigationView {
@@ -201,7 +201,7 @@ extension ContentView {
         ]
 
         analyticsManager.analytics?.identify(userId: "i12345", traits: traits)
-        print("✅ Identified user with traits")
+        LoggerAnalytics.debug("✅ Identified user with traits")
     }
 
     // MARK: - Events with Multiple Products
@@ -211,7 +211,7 @@ extension ContentView {
         properties["products"] = getMultipleProducts()
 
         analyticsManager.analytics?.track(name: "Checkout Started", properties: properties)
-        print("✅ Tracked Checkout Started event")
+        LoggerAnalytics.debug("✅ Tracked Checkout Started event")
     }
 
     private func orderCompletedEvent() {
@@ -228,7 +228,7 @@ extension ContentView {
         properties = ["total": 300]
         analyticsManager.analytics?.track(name: "Order Completed", properties: properties)
 
-        print("✅ Tracked Order Completed events (3 variations)")
+        LoggerAnalytics.debug("✅ Tracked Order Completed events (3 variations)")
     }
 
     private func orderRefundedEvent() {
@@ -236,7 +236,7 @@ extension ContentView {
         properties["products"] = getMultipleProducts()
 
         analyticsManager.analytics?.track(name: "Order Refunded", properties: properties)
-        print("✅ Tracked Order Refunded event")
+        LoggerAnalytics.debug("✅ Tracked Order Refunded event")
     }
 
     private func productListViewedEvent() {
@@ -244,7 +244,7 @@ extension ContentView {
         properties["products"] = getMultipleProducts()
 
         analyticsManager.analytics?.track(name: "Product List Viewed", properties: properties)
-        print("✅ Tracked Product List Viewed event")
+        LoggerAnalytics.debug("✅ Tracked Product List Viewed event")
     }
 
     private func cartViewedEvent() {
@@ -252,7 +252,7 @@ extension ContentView {
         properties["products"] = getMultipleProducts()
 
         analyticsManager.analytics?.track(name: "Cart Viewed", properties: properties)
-        print("✅ Tracked Cart Viewed event")
+        LoggerAnalytics.debug("✅ Tracked Cart Viewed event")
     }
 
     // MARK: - Events with Single Product
@@ -260,25 +260,25 @@ extension ContentView {
     private func productAddedEvent() {
         let properties = getStandardCustomAndProductAtRoot()
         analyticsManager.analytics?.track(name: "Product Added", properties: properties)
-        print("✅ Tracked Product Added event")
+        LoggerAnalytics.debug("✅ Tracked Product Added event")
     }
 
     private func productAddedToWishlistEvent() {
         let properties = getStandardCustomAndProductAtRoot()
         analyticsManager.analytics?.track(name: "Product Added to Wishlist", properties: properties)
-        print("✅ Tracked Product Added to Wishlist event")
+        LoggerAnalytics.debug("✅ Tracked Product Added to Wishlist event")
     }
 
     private func productViewedEvent() {
         let properties = getStandardCustomAndProductAtRoot()
         analyticsManager.analytics?.track(name: "Product Viewed", properties: properties)
-        print("✅ Tracked Product Viewed event")
+        LoggerAnalytics.debug("✅ Tracked Product Viewed event")
     }
 
     private func productRemovedEvent() {
         let properties = getStandardCustomAndProductAtRoot()
         analyticsManager.analytics?.track(name: "Product Removed", properties: properties)
-        print("✅ Tracked Product Removed event")
+        LoggerAnalytics.debug("✅ Tracked Product Removed event")
     }
 
     // MARK: - Events without Product Properties
@@ -286,13 +286,13 @@ extension ContentView {
     private func paymentInfoEnteredEvent() {
         let properties = getStandardAndCustomProperties()
         analyticsManager.analytics?.track(name: "Payment Info Entered", properties: properties)
-        print("✅ Tracked Payment Info Entered event")
+        LoggerAnalytics.debug("✅ Tracked Payment Info Entered event")
     }
 
     private func productsSearchedEvent() {
         let properties = getStandardAndCustomProperties()
         analyticsManager.analytics?.track(name: "Products Searched", properties: properties)
-        print("✅ Tracked Products Searched event")
+        LoggerAnalytics.debug("✅ Tracked Products Searched event")
     }
 
     private func cartSharedEvent() {
@@ -306,7 +306,7 @@ extension ContentView {
         properties["product_id"] = "item value - 2"
         analyticsManager.analytics?.track(name: "Cart Shared", properties: properties)
 
-        print("✅ Tracked Cart Shared events (2 variations)")
+        LoggerAnalytics.debug("✅ Tracked Cart Shared events (2 variations)")
     }
 
     private func productSharedEvent() {
@@ -320,7 +320,7 @@ extension ContentView {
         properties["product_id"] = "item value - 2"
         analyticsManager.analytics?.track(name: "Product Shared", properties: properties)
 
-        print("✅ Tracked Product Shared events (2 variations)")
+        LoggerAnalytics.debug("✅ Tracked Product Shared events (2 variations)")
     }
 
     private func productClickedEvent() {
@@ -328,7 +328,7 @@ extension ContentView {
         properties["product_id"] = "Item id - 1"
 
         analyticsManager.analytics?.track(name: "Product Clicked", properties: properties)
-        print("✅ Tracked Product Clicked event")
+        LoggerAnalytics.debug("✅ Tracked Product Clicked event")
     }
 
     private func promotionViewedEvent() {
@@ -336,7 +336,7 @@ extension ContentView {
         properties["name"] = "promotion name-1"
 
         analyticsManager.analytics?.track(name: "Promotion Viewed", properties: properties)
-        print("✅ Tracked Promotion Viewed event")
+        LoggerAnalytics.debug("✅ Tracked Promotion Viewed event")
     }
 
     private func promotionClickedEvent() {
@@ -344,33 +344,33 @@ extension ContentView {
         properties["name"] = "promotion name-1"
 
         analyticsManager.analytics?.track(name: "Promotion Clicked", properties: properties)
-        print("✅ Tracked Promotion Clicked event")
+        LoggerAnalytics.debug("✅ Tracked Promotion Clicked event")
     }
 
     // MARK: - Custom Events
 
     private func customTrackEventWithoutProperties() {
         analyticsManager.analytics?.track(name: "Track Event 1")
-        print("✅ Tracked custom event without properties")
+        LoggerAnalytics.debug("✅ Tracked custom event without properties")
     }
 
     private func customTrackEventWithProperties() {
         let properties = getCustomProperties()
         analyticsManager.analytics?.track(name: "Track Event 2", properties: properties)
-        print("✅ Tracked custom event with properties")
+        LoggerAnalytics.debug("✅ Tracked custom event with properties")
     }
 
     // MARK: - Screen Events
 
     private func screenEventWithoutProperties() {
         analyticsManager.analytics?.screen(screenName: "View Controller 1")
-        print("✅ Tracked screen event without properties")
+        LoggerAnalytics.debug("✅ Tracked screen event without properties")
     }
 
     private func screenEventWithProperties() {
         let properties = getCustomProperties()
         analyticsManager.analytics?.screen(screenName: "View Controller 2", properties: properties)
-        print("✅ Tracked screen event with properties")
+        LoggerAnalytics.debug("✅ Tracked screen event with properties")
     }
 }
 

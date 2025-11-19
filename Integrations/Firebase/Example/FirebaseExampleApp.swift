@@ -43,9 +43,9 @@ struct FirebaseExampleApp: App {
 }
 
 // Singleton to manage analytics instance
-class AnalyticsManager: ObservableObject {
+class AnalyticsManager {
     static let shared = AnalyticsManager()
-    @Published var analytics: Analytics?
+    var analytics: Analytics?
 
     private init() {}
 }
