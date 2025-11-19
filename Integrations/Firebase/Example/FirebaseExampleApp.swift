@@ -51,7 +51,7 @@ class AnalyticsManager {
 }
 
 extension AnalyticsManager {
-    
+
     // MARK: - User Identity
 
     func identifyUser() {
@@ -237,7 +237,7 @@ extension AnalyticsManager {
 }
 
 extension AnalyticsManager {
-    
+
     private func getMultipleProducts() -> [[String: Any]] {
         let product1: [String: Any] = [
             "product_id": "RSPro1",

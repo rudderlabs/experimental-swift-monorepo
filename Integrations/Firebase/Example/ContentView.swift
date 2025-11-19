@@ -15,11 +15,6 @@ struct ContentView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 16) {
-                    Text("Firebase Integration Example")
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .padding()
-
                     // User Identity Section
                     VStack(spacing: 12) {
                         Text("User Identity")
@@ -35,155 +30,179 @@ struct ContentView: View {
                     .cornerRadius(10)
 
                     // Ecommerce Events with Multiple Products
-                    VStack(spacing: 12) {
-                        Text("Events with Multiple Products")
-                            .font(.headline)
-
-                        Button("Checkout Started") {
-                            analyticsManager.checkoutStartedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Order Completed") {
-                            analyticsManager.orderCompletedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Order Refunded") {
-                            analyticsManager.orderRefundedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Product List Viewed") {
-                            analyticsManager.productListViewedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Cart Viewed") {
-                            analyticsManager.cartViewedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    .padding()
-                    .background(Color.blue.opacity(0.1))
-                    .cornerRadius(10)
+                    multipleProductEventsSection
 
                     // Ecommerce Events with Single Product
-                    VStack(spacing: 12) {
-                        Text("Events with Single Product")
-                            .font(.headline)
-
-                        Button("Product Added") {
-                            analyticsManager.productAddedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Product Added to Wishlist") {
-                            analyticsManager.productAddedToWishlistEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Product Viewed") {
-                            analyticsManager.productViewedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Product Removed") {
-                            analyticsManager.productRemovedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    .padding()
-                    .background(Color.green.opacity(0.1))
-                    .cornerRadius(10)
+                    singleProductEventsSection
 
                     // Events without Product Properties
-                    VStack(spacing: 12) {
-                        Text("Events without Product Properties")
-                            .font(.headline)
-
-                        Button("Payment Info Entered") {
-                            analyticsManager.paymentInfoEnteredEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Products Searched") {
-                            analyticsManager.productsSearchedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Cart Shared") {
-                            analyticsManager.cartSharedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Product Shared") {
-                            analyticsManager.productSharedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Product Clicked") {
-                            analyticsManager.productClickedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Promotion Viewed") {
-                            analyticsManager.promotionViewedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Promotion Clicked") {
-                            analyticsManager.promotionClickedEvent()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    .padding()
-                    .background(Color.orange.opacity(0.1))
-                    .cornerRadius(10)
+                    eventsWithoutProductProperties
 
                     // Custom Events
-                    VStack(spacing: 12) {
-                        Text("Custom Events")
-                            .font(.headline)
-
-                        Button("Custom Track (No Properties)") {
-                            analyticsManager.customTrackEventWithoutProperties()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Custom Track (With Properties)") {
-                            analyticsManager.customTrackEventWithProperties()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    .padding()
-                    .background(Color.purple.opacity(0.1))
-                    .cornerRadius(10)
+                    customEvents
 
                     // Screen Events
-                    VStack(spacing: 12) {
-                        Text("Screen Events")
-                            .font(.headline)
-
-                        Button("Screen (No Properties)") {
-                            analyticsManager.screenEventWithoutProperties()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-
-                        Button("Screen (With Properties)") {
-                            analyticsManager.screenEventWithProperties()
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    .padding()
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(10)
+                    screenEvents
                 }
                 .padding()
             }
             .navigationTitle("Firebase Example")
         }
     }
+}
+
+extension ContentView {
+
+    var multipleProductEventsSection: some View {
+        VStack(spacing: 12) {
+            Text("Events with Multiple Products")
+                .font(.headline)
+
+            Button("Checkout Started") {
+                analyticsManager.checkoutStartedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Order Completed") {
+                analyticsManager.orderCompletedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Order Refunded") {
+                analyticsManager.orderRefundedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Product List Viewed") {
+                analyticsManager.productListViewedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Cart Viewed") {
+                analyticsManager.cartViewedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+        }
+        .padding()
+        .background(Color.blue.opacity(0.1))
+        .cornerRadius(10)
+    }
+
+    var singleProductEventsSection: some View {
+        VStack(spacing: 12) {
+            Text("Events with Single Product")
+                .font(.headline)
+
+            Button("Product Added") {
+                analyticsManager.productAddedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Product Added to Wishlist") {
+                analyticsManager.productAddedToWishlistEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Product Viewed") {
+                analyticsManager.productViewedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Product Removed") {
+                analyticsManager.productRemovedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+        }
+        .padding()
+        .background(Color.green.opacity(0.1))
+        .cornerRadius(10)
+    }
+
+    var eventsWithoutProductProperties: some View {
+        VStack(spacing: 12) {
+            Text("Events without Product Properties")
+                .font(.headline)
+
+            Button("Payment Info Entered") {
+                analyticsManager.paymentInfoEnteredEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Products Searched") {
+                analyticsManager.productsSearchedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Cart Shared") {
+                analyticsManager.cartSharedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Product Shared") {
+                analyticsManager.productSharedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Product Clicked") {
+                analyticsManager.productClickedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Promotion Viewed") {
+                analyticsManager.promotionViewedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Promotion Clicked") {
+                analyticsManager.promotionClickedEvent()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+        }
+        .padding()
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(10)
+    }
+
+    var customEvents: some View {
+        VStack(spacing: 12) {
+            Text("Custom Events")
+                .font(.headline)
+
+            Button("Custom Track (No Properties)") {
+                analyticsManager.customTrackEventWithoutProperties()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Custom Track (With Properties)") {
+                analyticsManager.customTrackEventWithProperties()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+        }
+        .padding()
+        .background(Color.purple.opacity(0.1))
+        .cornerRadius(10)
+    }
+
+    var screenEvents: some View {
+        VStack(spacing: 12) {
+            Text("Screen Events")
+                .font(.headline)
+
+            Button("Screen (No Properties)") {
+                analyticsManager.screenEventWithoutProperties()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+
+            Button("Screen (With Properties)") {
+                analyticsManager.screenEventWithProperties()
+            }
+            .buttonStyle(SecondaryButtonStyle())
+        }
+        .padding()
+        .background(Color.red.opacity(0.1))
+        .cornerRadius(10)
+    }
+
 }
 
 // MARK: - Button Styles
