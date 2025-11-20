@@ -16,18 +16,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     // User Identity Section
-                    VStack(spacing: 12) {
-                        Text("User Identity")
-                            .font(.headline)
-
-                        Button("Identify User") {
-                            analyticsManager.identifyUser()
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                    }
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(10)
+                    userIdentitySection
 
                     // Ecommerce Events with Multiple Products
                     multipleProductEventsSection
@@ -52,6 +41,21 @@ struct ContentView: View {
 }
 
 extension ContentView {
+    
+    var userIdentitySection: some View {
+        VStack(spacing: 12) {
+            Text("User Identity")
+                .font(.headline)
+
+            Button("Identify User") {
+                analyticsManager.identifyUser()
+            }
+            .buttonStyle(PrimaryButtonStyle())
+        }
+        .padding()
+        .background(Color.gray.opacity(0.1))
+        .cornerRadius(10)
+    }
 
     var multipleProductEventsSection: some View {
         VStack(spacing: 12) {
