@@ -72,7 +72,7 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
      */
     public func identify(payload: IdentifyEvent) {
         // Set Firebase user ID if present
-        if let userId = payload.userId, !FirebaseUtils.isEmpty(userId) {
+        if let userId = payload.userId, !FirebaseUtils.isEmpty(userId as String?) {
             LoggerAnalytics.debug("FirebaseIntegration: Setting userId to firebase")
             self.analyticsAdapter.setUserID(userId)
         }
@@ -174,18 +174,21 @@ extension FirebaseIntegration {
      * Handles ecommerce events with mapping
      */
     private func handleECommerceEvent(eventName: String, firebaseEvent: String, properties: [String: Any]?) {
-        var params: [String: Any] = [:]
-
-        if let properties = properties {
-            // Handle special parameter mappings for specific events
-            params = params + handleSpecialECommerceParams(firebaseEvent: firebaseEvent, properties: properties)
-
-            // Add constant parameters for specific events
-            params = params + addConstantParamsForECommerceEvent(eventName: eventName)
-
-            // Handle ecommerce-specific properties (revenue, products, currency, etc.)
-            params = params + handleECommerceEventProperties(properties: properties, firebaseEvent: firebaseEvent)
+        var params = [String: Any]()
+        
+        guard let properties else {
+            makeFirebaseEvent(firebaseEvent: firebaseEvent, params: params, properties: properties, isECommerceEvent: true)
+            return
         }
+
+        // Handle special parameter mappings for specific events
+        params = params + handleSpecialECommerceParams(firebaseEvent: firebaseEvent, properties: properties)
+
+        // Add constant parameters for specific events
+        params = params + addConstantParamsForECommerceEvent(eventName: eventName)
+
+        // Handle ecommerce-specific properties (revenue, products, currency, etc.)
+        params = params + handleECommerceEventProperties(properties: properties, firebaseEvent: firebaseEvent)
 
         makeFirebaseEvent(firebaseEvent: firebaseEvent, params: params, properties: properties, isECommerceEvent: true)
     }

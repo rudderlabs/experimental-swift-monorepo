@@ -119,23 +119,21 @@ class FirebaseUtils {
      * Checks if a value is empty
      */
     static func isEmpty(_ value: Any?) -> Bool {
-        if value == nil {
-            return true
-        }
+        guard let value else { return true }
 
-        if let stringValue = value as? String {
+        switch value {
+        case let stringValue as String:
             return stringValue.isEmpty
-        }
 
-        if let dictValue = value as? [String: Any] {
+        case let dictValue as [String: Any]:
             return dictValue.isEmpty
-        }
 
-        if let arrayValue = value as? [Any] {
+        case let arrayValue as [Any]:
             return arrayValue.isEmpty
-        }
 
-        return false
+        default:
+            return false
+        }
     }
 
     /**
