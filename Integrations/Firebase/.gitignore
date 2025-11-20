@@ -16,6 +16,8 @@ DerivedData/
 # Example app build artifacts
 Example/.build
 
+Example/GoogleService-Info.plist
+
 # ------------------------------------
 # macOS & Editor junk
 # ------------------------------------
