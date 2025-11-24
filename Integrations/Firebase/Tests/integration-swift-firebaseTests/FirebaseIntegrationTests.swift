@@ -18,13 +18,6 @@ struct FirebaseIntegrationTests {
     }
 
     private func createIdentifyEvent(userId: String? = nil, traits: [String: Any]? = nil) -> IdentifyEvent {
-        var userIdentity = UserIdentity()
-        if let userId = userId {
-            userIdentity.userId = userId
-        }
-        if let traits = traits {
-            userIdentity.traits = traits
-        }
         var event = IdentifyEvent()
         event.userId = userId
         event.context = event.context ?? [:] + (["traits": traits ?? [:]].mapValues { AnyCodable($0) })
