@@ -72,7 +72,7 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
      */
     public func identify(payload: IdentifyEvent) {
         // Set Firebase user ID if present
-        if let userId = payload.userId, !FirebaseUtils.isEmpty(userId as String?) {
+        if let userId = payload.userId, !FirebaseUtils.isEmpty(userId) {
             LoggerAnalytics.debug("FirebaseIntegration: Setting userId to firebase")
             self.analyticsAdapter.setUserID(userId)
         }
@@ -390,20 +390,8 @@ extension FirebaseIntegration {
 
             // Handle different value types
             switch value {
-            case let intValue as Int:
-                params[firebaseKey] = intValue
-
-            case let doubleValue as Double:
-                params[firebaseKey] = doubleValue
-
-            case let floatValue as Float:
-                params[firebaseKey] = Double(floatValue)
-
-            case let boolValue as Bool:
-                params[firebaseKey] = boolValue
-
-            case let numberValue as NSNumber:
-                params[firebaseKey] = numberValue.doubleValue
+            case is Int, is Double, is Float, is Bool, is NSNumber:
+                params[firebaseKey] = value
 
             case let stringValue as String:
                 // Truncate strings longer than 100 characters

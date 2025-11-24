@@ -117,7 +117,6 @@ struct FirebaseIntegrationTests {
 
         firebaseIntegration.identify(payload: identifyEvent)
 
-        print("DEBUG: setUserIDCalls count = \(mockAnalyticsAdapter.setUserIDCalls.count)")
         #expect(mockAnalyticsAdapter.setUserIDCalls.count == 1)
         if mockAnalyticsAdapter.setUserIDCalls.count > 0 {
             #expect(mockAnalyticsAdapter.setUserIDCalls[0] == "user123")
