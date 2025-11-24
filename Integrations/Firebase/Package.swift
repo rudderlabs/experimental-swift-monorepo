@@ -16,7 +16,7 @@ let package = Package(
         .library(
             name: "integration-swift-firebase",
             targets: ["integration-swift-firebase"]
-        ),
+        )
     ],
     dependencies: [
         .package(url: "https://github.com/firebase/firebase-ios-sdk", .upToNextMajor(from: "12.5.0")),
@@ -37,6 +37,6 @@ let package = Package(
         .testTarget(
             name: "integration-swift-firebaseTests",
             dependencies: ["integration-swift-firebase"]
-        ),
+        )
     ]
 )
