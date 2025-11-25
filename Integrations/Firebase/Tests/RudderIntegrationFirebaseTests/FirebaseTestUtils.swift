@@ -5,7 +5,7 @@
 //  Created by Vishal Gupta on 09/11/25.
 //
 
-@testable import integration_swift_firebase
+@testable import RudderIntegrationFirebase
 
 /**
  * Mock implementation for adapter of FirebaseApp
