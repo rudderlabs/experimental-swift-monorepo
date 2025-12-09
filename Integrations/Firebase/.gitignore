@@ -1,60 +1,44 @@
-# ------------------------------------
-# Swift Package Manager
-# ------------------------------------
+# Xcode
+#
+# gitignore contributors: Feel free to update this file as needed for the integrations.
+
+## User settings
+xcuserdata/
+
+## Obj-C/Swift specific
+*.hmap
+
+## App packaging
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+## Swift Package Manager
 /.build/
+.netrc
 .swiftpm/
+
+# Dependency management files (not needed for libraries)
 Packages/
 Package.pins
-Package.resolved
 
-# Credentials
-.netrc
+# Example app build artifacts
+Example/.build
 
-# ------------------------------------
-# Xcode
-# ------------------------------------
+# Xcode user-specific files
 xcuserdata/
 *.xcuserstate
 DerivedData/
 
-# Xcode project files (optional — uncomment if needed)
-# *.xcodeproj
-# *.xcworkspace
-
-# ------------------------------------
-# Obj-C/Swift specific
-# ------------------------------------
-*.hmap
-
-# ------------------------------------
-# App Packaging (for example apps)
-# ------------------------------------
-*.ipa
-*.dSYM
-*.dSYM.zip
-
-# ------------------------------------
-# Playgrounds
-# ------------------------------------
-timeline.xctimeline
-playground.xcworkspace
-
-# ------------------------------------
-# Example app build artifacts
-# ------------------------------------
-Example/.build
-
-Example/GoogleService-Info.plist
-
-# ------------------------------------
-# macOS & Editor junk
-# ------------------------------------
+# macOS and editor metadata
 .DS_Store
 *.swp
 *.swo
 *.tmp
 
-# ------------------------------------
 # Logs
-# ------------------------------------
 *.log
