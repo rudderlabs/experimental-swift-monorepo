@@ -17,18 +17,10 @@
 
 ---
 
-# RudderStack Firebase Integration for Swift
 
-The Firebase integration allows you to send your event data from RudderStack Swift SDK to Google Firebase Analytics.
+# Firebase Integration
 
-## Table of Contents
-
-- [Installation](#installation)
-- [Usage](#usage)
-- [Supported Events](#supported-events)
-- [Contact Us](#contact-us)
-
----
+The Firebase integration allows you to send your event data from RudderStack to Google Firebase Analytics.
 
 ## Installation
 
@@ -37,17 +29,46 @@ The Firebase integration allows you to send your event data from RudderStack Swi
 Add the Firebase integration to your Swift project using Swift Package Manager:
 
 1. In Xcode, go to `File > Add Package Dependencies`
-2. Enter the package repository URL: `https://github.com/rudderlabs/integration-swift-firebase`
+2. Enter the package repository URL: `https://github.com/rudderlabs/integration-swift-firebase` in the search bar
 3. Select the version you want to use
-4. Select the project to which you want to add the package
-5. Click on **Add Package**
+4. Select the target to which you want to add the package
+5. Finally, click on **Add Package**
 
 Alternatively, add it to your `Package.swift` file:
 
 ```swift
-dependencies: [
-    .package(url: "https://github.com/rudderlabs/integration-swift-firebase.git", from: "1.0.0")
-]
+// swift-tools-version:5.9
+// The swift-tools-version declares the minimum version of Swift required to build this package.
+
+import PackageDescription
+
+let package = Package(
+    name: "YourApp",
+    products: [
+        .library(
+            name: "YourApp",
+            targets: ["YourApp"]),
+    ],
+    dependencies: [
+        // Add the Firebase integration
+        .package(url: "https://github.com/rudderlabs/integration-swift-firebase.git", .upToNextMajor(from: "<latest_version>"))
+    ],
+    targets: [
+        .target(
+            name: "YourApp",
+            dependencies: [
+                .product(name: "FirebaseIntegration", package: "integration-swift-firebase")
+            ]),
+    ]
+)
+```
+
+## Supported Native Firebase SDK Version
+
+This integration supports Firebase iOS SDK version:
+
+```
+12.5.0+
 ```
 
 ### Platform Support
@@ -58,42 +79,28 @@ The integration supports the following platforms:
 - tvOS 15.0+
 - watchOS 8.0+
 
-### Firebase SDK Compatibility
-
-This integration is compatible with Firebase iOS SDK version `12.5.0` and above.
-
----
-
 ## Usage
 
-### Prerequisites
-
-1. Set up Firebase for your iOS project by following the [Firebase iOS setup guide](https://firebase.google.com/docs/ios/setup)
-2. Download the `GoogleService-Info.plist` from your Firebase console and add it to your project
-3. Add Firebase as a destination in the [RudderStack dashboard](https://app.rudderstack.com/)
-
-### Initialize RudderStack SDK with Firebase Integration
+Initialize the RudderStack SDK and add the Firebase integration:
 
 ```swift
 import RudderStackAnalytics
 import FirebaseIntegration
 
 class AppDelegate: UIResponder, UIApplicationDelegate {
-    
-    var analytics: Analytics?
-    
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        
+
         // Initialize the RudderStack Analytics SDK
         let config = Configuration(
             writeKey: "<WRITE_KEY>",
             dataPlaneUrl: "<DATA_PLANE_URL>"
         )
-        self.analytics = Analytics(configuration: config)
-        
+        let analytics = Analytics(configuration: config)
+
         // Add Firebase integration
-        self.analytics?.add(plugin: FirebaseIntegration())
-        
+        analytics.add(plugin: FirebaseIntegration())
+
         return true
     }
 }
@@ -103,95 +110,14 @@ Replace:
 - `<WRITE_KEY>`: Your project's write key from the RudderStack dashboard
 - `<DATA_PLANE_URL>`: The URL of your RudderStack data plane
 
-### SwiftUI Usage
-
-For SwiftUI applications, you can initialize the SDK in your main App struct:
-
-```swift
-import SwiftUI
-import RudderStackAnalytics
-import FirebaseIntegration
-
-@main
-struct MyApp: App {
-    
-    init() {
-        let config = Configuration(
-            writeKey: "<WRITE_KEY>",
-            dataPlaneUrl: "<DATA_PLANE_URL>"
-        )
-        let analytics = Analytics(configuration: config)
-        
-        // Add Firebase integration
-        analytics.add(plugin: FirebaseIntegration())
-    }
-    
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
-    }
-}
-```
-
 ---
 
-## Supported Events
+## Contact us
 
-The Firebase integration supports the following RudderStack events:
-
-### Track Events
-All `track` events are sent to Firebase Analytics as custom events:
-
-```swift
-analytics?.track(
-    name: "Order Completed",
-    properties: [
-        "revenue": 30.0,
-        "currency": "USD",
-        "order_id": "12345"
-    ]
-)
-```
-
-### Screen Events
-`screen` events are sent to Firebase as `screen_view` events:
-
-```swift
-analytics?.screen(
-    screenName: "Home Screen",
-    category: "Navigation",
-    properties: [
-        "section": "main"
-    ]
-)
-```
-
-### Identify Events
-`identify` events update Firebase user properties:
-
-```swift
-analytics?.identify(
-    userId: "user123",
-    traits: [
-        "name": "John Doe",
-        "email": "john@example.com",
-        "plan": "premium"
-    ]
-)
-```
-
----
-
-## Contact Us
-
-For more information or support:
+For more information:
 
 - Email us at [docs@rudderstack.com](mailto:docs@rudderstack.com)
 - Join our [Community Slack](https://rudderstack.com/join-rudderstack-slack-community)
-- Visit our [Documentation](https://rudderstack.com/docs/)
-
----
 
 ## Follow Us
 
@@ -199,9 +125,3 @@ For more information or support:
 - [Slack](https://rudderstack.com/join-rudderstack-slack-community)
 - [Twitter](https://twitter.com/rudderstack)
 - [YouTube](https://www.youtube.com/channel/UCgV-B77bV_-LOmKYHw8jvBw)
-
----
-
-## License
-
-This project is licensed under the Elastic License 2.0 (ELv2) - see the [LICENSE](LICENSE) file for details.
