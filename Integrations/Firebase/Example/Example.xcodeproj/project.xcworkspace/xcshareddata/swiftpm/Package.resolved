@@ -123,8 +123,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/rudderlabs/rudder-sdk-swift.git",
       "state" : {
-        "branch" : "develop",
-        "revision" : "c62675f96d214a28dc56174d60469b21925ace2c"
+        "revision" : "01fea0d07e79336d3a02acfb0eefa22a7e194497",
+        "version" : "1.0.0"
       }
     },
     {

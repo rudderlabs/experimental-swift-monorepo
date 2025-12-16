@@ -29,10 +29,18 @@ The Firebase integration allows you to send your event data from RudderStack to 
 Add the Firebase integration to your Swift project using Swift Package Manager:
 
 1. In Xcode, go to `File > Add Package Dependencies`
+
+<img width="960" height="540" alt="add_package_dependency" src="https://github.com/user-attachments/assets/ea3af946-97d3-44f8-8616-8da29135dadf" />
+
 2. Enter the package repository URL: `https://github.com/rudderlabs/integration-swift-firebase` in the search bar
 3. Select the version you want to use
+
+<img width="801" height="443" alt="select_package" src="https://github.com/user-attachments/assets/384eac3b-9897-4a24-bac2-0e5f7be35903" />
+
 4. Select the target to which you want to add the package
 5. Finally, click on **Add Package**
+
+<img width="641" height="286" alt="select_target" src="https://github.com/user-attachments/assets/ecb9ff06-6462-47f2-887d-4ce166bd6b56" />
 
 Alternatively, add it to your `Package.swift` file:
 
