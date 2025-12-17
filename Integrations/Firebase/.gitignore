@@ -1,37 +1,44 @@
-# ------------------------------------
-# Swift Package Manager (Root Package)
-# ------------------------------------
-/.build/
-.swiftpm/
-Package.pins
-Package.resolved
+# Xcode
+#
+# gitignore contributors: Feel free to update this file as needed for the integrations.
 
-# ------------------------------------
-# Xcode (for Example/ app or if pkg opened with Xcode)
-# ------------------------------------
-*.xcodeproj
-*.xcworkspace
+## User settings
 xcuserdata/
-*.xcuserstate
-DerivedData/
+
+## Obj-C/Swift specific
+*.hmap
+
+## App packaging
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+## Swift Package Manager
+/.build/
+.netrc
+.swiftpm/
+
+# Dependency management files (not needed for libraries)
+Packages/
+Package.pins
 
 # Example app build artifacts
 Example/.build
 
-# ------------------------------------
-# macOS & Editor junk
-# ------------------------------------
+# Xcode user-specific files
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# macOS and editor metadata
 .DS_Store
 *.swp
 *.swo
 *.tmp
 
-# ------------------------------------
 # Logs
-# ------------------------------------
 *.log
-
-# ------------------------------------
-# Private Credentials
-# ------------------------------------
-.netrc
