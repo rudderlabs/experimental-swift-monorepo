@@ -22,6 +22,8 @@
 
 The Firebase integration allows you to send your event data from RudderStack to Google Firebase Analytics.
 
+> This SDK fully supports both Swift and Objective-C and can be used seamlessly in either type of project.
+
 ## Installation
 
 ### Swift Package Manager
