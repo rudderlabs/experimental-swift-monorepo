@@ -11,7 +11,7 @@ import RudderStackAnalytics
 public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
 
     final let analyticsAdapter: FirebaseAnalyticsAdapter
-    final let appAdapter: FirebaseAppAdapter
+    final var appAdapter: FirebaseAppAdapter
 
     init(
         analyticsAdapter: FirebaseAnalyticsAdapter,
@@ -47,9 +47,13 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
      * Creates and initializes the Firebase integration
      */
     public func create(destinationConfig: [String: Any]) throws {
-        // Ensure Firebase initialization happens on the main thread without capturing objects
-        if !self.appAdapter.isConfigured {
-            self.appAdapter.configure()
+        // Pick up a Firebase app that was configured externally (before the integration was created)
+        if appAdapter.firebaseAppInstance == nil {
+            appAdapter.firebaseAppInstance = appAdapter.provideFirebaseAppInstance()
+        }
+
+        if !appAdapter.isConfigured {
+            appAdapter.configure()
             LoggerAnalytics.debug("Firebase is initialized")
         } else {
             LoggerAnalytics.debug("Firebase core already initialized - skipping Firebase configuration")
