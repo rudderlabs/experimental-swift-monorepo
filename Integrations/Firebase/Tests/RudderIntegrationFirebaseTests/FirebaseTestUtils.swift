@@ -11,12 +11,15 @@
  * Mock implementation for adapter of FirebaseApp
  */
 class MockFirebaseAppAdapter: FirebaseAppAdapter {
-    var configured = false
-
-    var isConfigured: Bool { configured }
+    var firebaseAppInstance: Any?
+    var isConfigured: Bool { firebaseAppInstance != nil }
 
     func configure() {
-        configured = true
+        firebaseAppInstance = "MockFirebaseApp"
+    }
+
+    func provideFirebaseAppInstance() -> Any? {
+        return nil // No pre-existing Firebase app by default
     }
 }
 

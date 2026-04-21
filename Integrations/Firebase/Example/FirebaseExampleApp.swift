@@ -39,6 +39,15 @@ struct FirebaseExampleApp: App {
 
         // Store analytics instance globally for access in ContentView
         AnalyticsManager.shared.analytics = analytics
+        
+        firebaseIntegration.onDestinationReady { instance, result in
+            switch result {
+            case .success:
+                LoggerAnalytics.debug("✅ Firebase integration ready")
+            case .failure(let error):
+                LoggerAnalytics.error("❌ Firebase integration failed: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
