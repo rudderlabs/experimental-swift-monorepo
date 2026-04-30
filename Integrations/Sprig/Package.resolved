@@ -1,0 +1,23 @@
+{
+  "pins" : [
+    {
+      "identity" : "rudder-sdk-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/rudderlabs/rudder-sdk-swift.git",
+      "state" : {
+        "revision" : "ce41412cf9e293d3050b90afa52e2a0cfadd3b1a",
+        "version" : "1.2.1"
+      }
+    },
+    {
+      "identity" : "userleap-ios-sdk-releases",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/UserLeap/userleap-ios-sdk-releases",
+      "state" : {
+        "revision" : "b07b1c2f42cb5e9fe883da3c2c8ff09731557e84",
+        "version" : "4.29.0"
+      }
+    }
+  ],
+  "version" : 2
+}
