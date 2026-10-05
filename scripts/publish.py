@@ -140,7 +140,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
         if interrupt == "after-tag":
             raise InterruptedError("Injected interruption after tag push")
         release_url = ensure_release(key, version, sha, expected, mirror_root)
-        return {"package": key, "version": version, "sourceCommit": expected["sourceCommit"],
+        return {"status": "published", "package": key, "version": version, "sourceCommit": expected["sourceCommit"],
                 "publicationCommit": sha, "tag": version, "release": release_url,
                 "reusedTag": existing, "branch": RELEASE_BRANCH,
                 "transport": "local-git" if mirror_root else "github"}
@@ -152,5 +152,19 @@ if __name__ == "__main__":
     parser.add_argument("version")
     parser.add_argument("--local-remotes", type=Path)
     parser.add_argument("--interrupt", choices=["after-commit", "after-tag"])
+    parser.add_argument("--source-root", type=Path, default=ROOT)
+    parser.add_argument("--result-file", type=Path)
     args = parser.parse_args()
-    print(json.dumps(publish(args.package, args.version, args.local_remotes, interrupt=args.interrupt), indent=2))
+    try:
+        result = publish(args.package, args.version, args.local_remotes, root=args.source_root, interrupt=args.interrupt)
+    except (ValueError, RuntimeError, OSError, InterruptedError) as error:
+        result = {"status": "incomplete", "package": args.package, "version": args.version,
+                  "error": str(error),
+                  "note": "A public tag may already exist; inspect refs and retry with the original source SHA."}
+        if args.result_file:
+            write_json(args.result_file, result)
+        print(json.dumps(result, indent=2))
+        raise SystemExit(1)
+    if args.result_file:
+        write_json(args.result_file, result)
+    print(json.dumps(result, indent=2))
