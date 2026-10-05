@@ -10,7 +10,7 @@ on:
         type: string
         required: true
       source_sha:
-        description: Full reviewed source commit SHA on dev
+        description: Full reviewed source commit SHA on main
         type: string
         required: true
   workflow_call:
@@ -54,7 +54,7 @@ jobs:
           sha = os.environ['SOURCE_SHA']
           if key not in NAMES or not re.fullmatch('[0-9a-f]{40}', sha):
               raise SystemExit('Invalid package or source SHA')
-          subprocess.run(['git','merge-base','--is-ancestor',sha,'origin/dev'],check=True)
+          subprocess.run(['git','merge-base','--is-ancestor',sha,'origin/main'],check=True)
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write('repository=' + NAMES[key] + '\n')
           PYCODE

@@ -110,7 +110,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
         else:
             validate(stage, temp / "validation", mirror_root)
             if has_branch and load(repo / ".publication.json") == expected:
-                # Recover after the generated dev commit was pushed without its tag.
+                # Recover after the generated publication commit was pushed without its tag.
                 sha = git(repo, "rev-parse", "HEAD")
             else:
                 if has_branch:
@@ -124,13 +124,13 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
                             else:
                                 child.unlink()
                 else:
-                    # Bootstrap dev without checking out or inheriting a locked default branch.
+                    # Bootstrap the publication branch without checking out or inheriting a locked default branch.
                     git(repo, "symbolic-ref", "HEAD", f"refs/heads/{RELEASE_BRANCH}")
                 shutil.copytree(stage, repo, dirs_exist_ok=True)
                 sha = commit(repo, f"chore: sdk-5388 publish experimental {key} {version}")
                 git(repo, "push", "origin", f"HEAD:refs/heads/{RELEASE_BRANCH}")
             if interrupt == "after-commit":
-                raise InterruptedError("Injected interruption after dev push")
+                raise InterruptedError("Injected interruption after publication push")
             git(repo, "tag", version)
             git(repo, "push", "origin", f"refs/tags/{version}")
         # Confirm the served tag, not only the success of the push command.

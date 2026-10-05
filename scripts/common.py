@@ -14,7 +14,7 @@ NAMES = {
 SOURCE_NAME = "experimental-swift-monorepo"
 CONSUMER_NAME = "experimental-swift-example-consumer-app"
 OWNER = "rudderlabs"
-RELEASE_BRANCH = "dev"
+RELEASE_BRANCH = "main"
 
 
 def run(args, cwd=ROOT, env=None):
@@ -34,9 +34,7 @@ def commit(repo, message):
     if paths:
         git(repo, "add", "--", *paths)
         git(repo, "diff", "--cached", "--check")
-        git(repo, "-c", "user.name=Swift Publication Lab", "-c",
-            "user.email=swift-publication-lab@example.invalid", "-c", "commit.gpgsign=false",
-            "commit", "-m", message)
+        git(repo, "commit", "-m", message)
     return git(repo, "rev-parse", "HEAD")
 
 

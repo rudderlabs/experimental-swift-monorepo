@@ -1,7 +1,7 @@
 name: Experimental Release Please
 on:
   push:
-    branches: [dev]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   intent:
-    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/dev'
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: experimental-spm-release
     outputs:
@@ -34,7 +34,7 @@ jobs:
         id: release
         with:
           token: ${{ steps.token.outputs.token }}
-          target-branch: dev
+          target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
   sdk:

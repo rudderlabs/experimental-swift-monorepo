@@ -31,17 +31,18 @@ def rehearse(ios=False, consumer_template=None):
     source, remotes = directory/'source', directory/'remotes'
     run(['git', 'clone', '--no-local', '--branch', RELEASE_BRANCH, ROOT, source])
     remotes.mkdir()
-    # A locked main branch remains the remote default, so an implicit clone branch is wrong.
+    # Keep a protected bootstrap default separate from the publication branch.
+    locked_branch = 'locked-bootstrap' if RELEASE_BRANCH == 'main' else 'main'
     seed = directory/'locked-main-seed'
-    run(['git', 'init', '--initial-branch=main', seed])
+    run(['git', 'init', '--initial-branch=' + locked_branch, seed])
     (seed/'README.md').write_text('Locked organization bootstrap branch. Do not publish here.\n')
     locked_main_sha = commit(seed, 'test: sdk-5388 model locked organization main')
     for name in NAMES.values():
         remote = remotes/(name+'.git')
-        run(['git', 'init', '--bare', '--initial-branch=main', remote])
-        git(seed, 'push', remote, 'main')
+        run(['git', 'init', '--bare', '--initial-branch=' + locked_branch, remote])
+        git(seed, 'push', remote, locked_branch)
         hook = remote/'hooks/pre-receive'
-        hook.write_text('#!/bin/sh\nwhile read old new ref; do\n  if [ "$ref" = refs/heads/main ]; then\n    echo "main is locked by the organization" >&2\n    exit 1\n  fi\ndone\n')
+        hook.write_text('#!/bin/sh\nwhile read old new ref; do\n  if [ "$ref" = refs/heads/' + locked_branch + ' ]; then\n    echo "main is locked by the organization" >&2\n    exit 1\n  fi\ndone\n')
         hook.chmod(0o755)
     records = {'mode': 'local Git; GitHub Release metadata modeled, Release Please intent supplied by rehearsal',
                'sourceTemplateCommit': git(source, 'rev-parse', 'HEAD'), 'branch': RELEASE_BRANCH,
@@ -134,7 +135,7 @@ def rehearse(ios=False, consumer_template=None):
     commit(source,'fix: sdk-5388 strip trailing event punctuation in sprig fixture')
     expected_failure('immutable tag conflicts',lambda: publish('sprig','0.1.0',remotes,source),'Existing tag conflicts')
     bump({'sprig':'0.1.1'})
-    # Recovery after a commit push must reuse the existing dev commit.
+    # Recovery after a commit push must reuse the existing publication commit.
     try: publish('sprig','0.1.1',remotes,source,interrupt='after-commit')
     except InterruptedError: pass
     else: raise AssertionError('interruption not injected')
@@ -187,18 +188,18 @@ def rehearse(ios=False, consumer_template=None):
     (seed/'README.md').write_text('Attempt a fast-forward update to the locked main branch.\n')
     commit(seed, 'test: sdk-5388 attempt a blocked main update')
     expected_failure('organization blocks main writes',
-                     lambda: git(seed,'push',remotes/(NAMES['sprig']+'.git'),'main'),
+                     lambda: git(seed,'push',remotes/(NAMES['sprig']+'.git'),locked_branch),
                      'main is locked by the organization')
     (drift/'README.md').write_text('Injected manual drift\n')
     commit(drift,'test: sdk-5388 inject publication drift')
     git(drift,'push','origin',RELEASE_BRANCH)
     expected_failure('manual publication drift',lambda: publish('sprig','0.2.0',remotes,source),'manual drift')
     # The negative case remains intact for inspection. The consumer can still install immutable tags.
-    records['note'] = 'The sprig dev branch in this disposable run intentionally retains the final drift injection.'
+    records['note'] = 'The sprig publication branch in this disposable run intentionally retains the final drift injection.'
     for name in NAMES.values():
-        assert git(remotes/(name+'.git'), 'rev-parse', 'refs/heads/main') == locked_main_sha
-        assert git(remotes/(name+'.git'), 'symbolic-ref', 'HEAD') == 'refs/heads/main'
-    records['lockedMainUnchanged'] = 'passed for all three publication repositories; main remained the default branch'
+        assert git(remotes/(name+'.git'), 'rev-parse', 'refs/heads/' + locked_branch) == locked_main_sha
+        assert git(remotes/(name+'.git'), 'symbolic-ref', 'HEAD') == 'refs/heads/' + locked_branch
+    records['lockedMainUnchanged'] = 'passed for all three publication repositories; protected bootstrap remained the default branch'
     outputs = {}
     for key,p in inventory(source).items():
         outputs.update({p['path']+'--release_created':'true',p['path']+'--version':versions[key],p['path']+'--sha':git(source,'rev-parse','HEAD')})

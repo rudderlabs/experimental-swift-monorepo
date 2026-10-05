@@ -36,7 +36,7 @@ Choose a fresh output filename each run. Reads use the authenticated `gh` identi
 
 - Confirm actual defaults and dependency graph/alert/security-PR settings.
 - Verify source, independent consumer, and all publication graph inputs.
-- Resolve publication coverage when generated output uses non-default `dev`.
+- Verify publication graph coverage from generated output on default `main`.
 - Run the real Dependabot PR through reviewed release intent and consumer verification.
 - Run the shared external-vendor and dependency-range/refresh trials.
 - Capture existing suitable native security findings when available; otherwise retain an unverified result.
