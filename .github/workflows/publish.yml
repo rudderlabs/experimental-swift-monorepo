@@ -66,6 +66,10 @@ jobs:
           owner: rudderlabs
           repositories: ${{ steps.preflight.outputs.repository }}
           permission-contents: write
+      - name: Configure publication bot identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Publish and verify served tag
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
