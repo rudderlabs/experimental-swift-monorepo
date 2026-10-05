@@ -1,6 +1,6 @@
 # Remote experiment runbook
 
-Status: prepared, not executed. Complete repository approval before these remote steps.
+Status: repository bootstrap and public baseline consumer verification completed. Hosted Release Please, App/environment controls, repeated publication, and dependency graph tests remain pending.
 The local rehearsal evidence does not close SDK-5388.
 
 The remote proof also includes the [staged dependency-management procedure](docs/dependency-management/README.md). Run its local dependency checks and review package-local release markers before the updater trial. Use the [acceptance commands and hosted gates](docs/dependency-management/ACCEPTANCE.md). Its source/consumer graph checks and failure cases are required evidence; publication success alone is insufficient.
@@ -18,7 +18,7 @@ The remote proof also includes the [staged dependency-management procedure](docs
 9. Confirm the Actions job can read only the intended credentials and repositories.
 10. Set source variable `EXPERIMENTAL_RELEASES_ENABLED=true` after preflight and review.
 
-Source and consumer have no GitHub `origin` configured locally. This prevents an accidental push to an unapproved destination.
+All five local repositories have SSH GitHub origins and tracking branches. Source alignment is in PR #1; review and merge it before activating releases.
 Generated sibling repositories are local review snapshots. Remote publication must run the exporter against the selected source SHA.
 A generated snapshot from a different source SHA is not a valid retry candidate.
 
@@ -28,7 +28,9 @@ All five repositories use default `main`. Release Please targets `main`.
 The source and consumer require reviewed PRs after initial creation.
 Generated publication updates also inherit the PR requirement. The publisher needs an explicitly approved App bypass or a reviewed update route. Contents write alone is insufficient. Keep release activation disabled until this is resolved.
 Dispatch manual runs using `--ref main` and permit `main` in the release environment policy.
-The local rehearsal protects a separate bootstrap branch. It does not prove hosted App bypass or ruleset behavior.
+The local rehearsal protects a separate bootstrap branch and uses default main for publication. It does not prove hosted App bypass or ruleset behavior.
+
+Follow [SB-01 through SB-06](docs/release-boundaries/README.md) before the remote go decision. Leave the first real release PR open while recording unchanged publication refs. Source component releases represent intent; only verified publication status represents customer success. Retry incomplete jobs against the original source SHA.
 
 ## Baseline manual release
 

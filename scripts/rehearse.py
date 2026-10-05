@@ -6,6 +6,7 @@ import importlib.util
 import json
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 
 from common import ROOT, NAMES, CONSUMER_NAME, RELEASE_BRANCH, commit, git, inventory, load, run, write_json
@@ -66,11 +67,11 @@ def rehearse(ios=False, consumer_template=None):
         save()
         print('PASS guard: ' + name, flush=True)
     versions = {k: '0.1.0' for k in NAMES}
-    def consumer(name, requested=None, build_ios=False):
+    def consumer(name, requested=None, build_ios=False, branches=()):
         folder = directory / 'consumers' / name
         run(['git', 'clone', '--no-local', '--branch', RELEASE_BRANCH, consumer_template, folder])
         deps = module(folder/'scripts/dependencies.py', 'consumer_dependencies')
-        deps.render(folder, [f'{k}={v}' for k,v in (requested or versions).items()])
+        deps.render(folder, [f'{k}={v}' for k,v in (requested or versions).items()], branches=branches)
         verify = module(folder/'scripts/verify.py', 'consumer_verify')
         evidence = verify.verify(folder, remotes, build_ios)
         write_json(directory/'evidence'/f'{name}-consumer.json', evidence)
@@ -78,10 +79,10 @@ def rehearse(ios=False, consumer_template=None):
             # Keep a concrete upgrade diff that can be reviewed from the consumer perspective.
             commit(folder, 'test: sdk-5388 select experimental package versions')
         return {'path': str(folder), 'runtime': evidence['runtime']}
-    def release_scenario(name, selected, build_ios=False):
+    def release_scenario(name, selected, build_ios=False, release_source=None):
         print('RUN scenario: ' + name, flush=True)
         before = {key: git(remotes/(repo+'.git'), 'tag', '--list') for key, repo in NAMES.items()}
-        result = [publish(key, versions[key], remotes, source) for key in selected]
+        result = [publish(key, versions[key], remotes, release_source or source) for key in selected]
         for key in set(NAMES)-set(selected):
             assert before[key] == git(remotes/(NAMES[key]+'.git'), 'tag', '--list'), 'unrelated package released'
         records['scenarios'].append({'name': name, 'published': result, 'consumer': consumer(name, build_ios=build_ios)})
@@ -107,6 +108,13 @@ def rehearse(ios=False, consumer_template=None):
         dependency_markers(source)
         commit(source, 'chore: sdk-5388 prepare reviewed experimental release versions')
     release_scenario('baseline', list(NAMES), build_ios=ios)
+    for name in NAMES.values():
+        remote = remotes/(name+'.git')
+        git(remote, 'symbolic-ref', 'HEAD', 'refs/heads/' + RELEASE_BRANCH)
+        git(remote, 'branch', 'develop', '0.1.0')
+    baseline_refs = {key: git(remotes/(name+'.git'), 'show-ref') for key, name in NAMES.items()}
+    records['publicationDefaults'] = 'main; protected bootstrap and frozen develop refs retained separately'
+
     # Verify deterministic exports against the entire generated tree, including provenance.
     with tempfile.TemporaryDirectory() as temp:
         a, b = Path(temp)/'a', Path(temp)/'b'
@@ -133,14 +141,53 @@ def rehearse(ios=False, consumer_template=None):
     sprig_file.write_text('import Foundation\n'+sprig_file.read_text().replace('normalize(name)', 'normalize(name).trimmingCharacters(in: .punctuationCharacters)'))
     assert affected(['Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift'],source)==['sprig']
     commit(source,'fix: sdk-5388 strip trailing event punctuation in sprig fixture')
+    assert baseline_refs == {key: git(remotes/(name+'.git'), 'show-ref') for key, name in NAMES.items()}
+    records['unreleasedSourceChange'] = {
+        'sourceCommit': git(source, 'rev-parse', 'HEAD'),
+        'publicationRefs': 'unchanged after source commit; real open Release Please PR remains a hosted gate',
+        'versionConsumer': consumer('unreleased-source-version', {key:'0.1.0' for key in NAMES}),
+        'mainConsumer': consumer('unreleased-source-main', {key:'0.1.0' for key in NAMES}, branches=['sprig=main']),
+        'developConsumer': consumer('unreleased-source-develop', {key:'0.1.0' for key in NAMES}, branches=['sprig=develop'])}
+
     expected_failure('immutable tag conflicts',lambda: publish('sprig','0.1.0',remotes,source),'Existing tag conflicts')
     bump({'sprig':'0.1.1'})
+    # Advance source main after approval, then publish only the approved commit.
+    approved_sha = git(source, 'rev-parse', 'HEAD')
+    approved_source = directory/'approved-release-source'
+    run(['git', 'clone', '--no-local', source, approved_source])
+    git(approved_source, 'checkout', '--detach', approved_sha)
+    approved_text = sprig_file.read_text()
+    sprig_file.write_text(approved_text + '\n// UNRELEASED_NEXT_CHANGE must not appear in the approved export.\n')
+    advanced_sha = commit(source, 'fix: sdk-5388 model a later unapproved source change')
+    assert baseline_refs == {key: git(remotes/(name+'.git'), 'show-ref') for key, name in NAMES.items()}
     # Recovery after a commit push must reuse the existing publication commit.
-    try: publish('sprig','0.1.1',remotes,source,interrupt='after-commit')
+
+    try: publish('sprig','0.1.1',remotes,approved_source,interrupt='after-commit')
     except InterruptedError: pass
     else: raise AssertionError('interruption not injected')
     interrupted_sha = git(remotes/(NAMES['sprig']+'.git'),'rev-parse',RELEASE_BRANCH)
-    release_scenario('sprig-only', ['sprig'])
+    assert not git(remotes/(NAMES['sprig']+'.git'), 'tag', '--list', '0.1.1')
+    assert not (directory/'modeled-github-releases'/NAMES['sprig']/'0.1.1.json').exists()
+    records['afterCommitState'] = 'publication main served; version tag absent; publication incomplete'
+    retry_file = directory/'evidence/pinned-source-cli-retry.json'
+    run([sys.executable, ROOT/'scripts/publish.py', 'sprig', '0.1.1',
+         '--local-remotes', remotes, '--source-root', approved_source,
+         '--result-file', retry_file])
+    retry_result = load(retry_file)
+    assert retry_result['status'] == 'published' and retry_result['sourceCommit'] == approved_sha
+    release_scenario('sprig-only', ['sprig'], release_source=approved_source)
+    generated_sprig = git(remotes/(NAMES['sprig']+'.git'), 'show', '0.1.1:Sources/DemoSprig/DemoSprig.swift')
+    assert 'UNRELEASED_NEXT_CHANGE' not in generated_sprig
+    provenance = json.loads(git(remotes/(NAMES['sprig']+'.git'), 'show', '0.1.1:.publication.json'))
+    assert provenance['sourceCommit'] == approved_sha != advanced_sha
+    records['approvedSourceCommit'] = {'approved': approved_sha, 'laterMain': advanced_sha,
+                                      'exportUsesApprovedCommit': True, 'laterChangeExcluded': True}
+    records['branchConsumersAfterRelease'] = {
+        'main': consumer('released-main', branches=['sprig=main']),
+        'develop': consumer('frozen-develop', {key:'0.1.0' for key in NAMES}, branches=['sprig=develop'])}
+    sprig_file.write_text(approved_text)
+    commit(source, 'test: sdk-5388 remove the later unapproved fixture change')
+
     assert interrupted_sha == git(remotes/(NAMES['sprig']+'.git'),'rev-parse','0.1.1')
     records['afterCommitRecovery'] = 'passed; reused generated commit'
     sdk_file = source/'Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift'
@@ -158,9 +205,23 @@ def rehearse(ios=False, consumer_template=None):
     try: publish('firebase','0.1.1',remotes,source,interrupt='after-tag')
     except InterruptedError: pass
     else: raise AssertionError('interruption not injected')
+    assert git(remotes/(NAMES['firebase']+'.git'), 'tag', '--list', '0.1.1') == '0.1.1'
+    assert not (directory/'modeled-github-releases'/NAMES['firebase']/'0.1.1.json').exists()
+    records['afterTagState'] = 'SwiftPM version tag already served; GitHub release metadata incomplete'
     release_scenario('shared-source', ['sprig','firebase'])
     records['afterTagRecovery'] = 'passed; reused immutable tag and restored modeled release metadata'
     bump({'sdk':'0.2.0','sprig':'0.2.0','firebase':'0.2.0'}, sdk_minimum='0.2.0')
+    valid_sdk = sdk_file.read_text()
+    sdk_file.write_text(valid_sdk + '\nINVALID SWIFT SOURCE\n')
+    commit(source, 'test: sdk-5388 inject a generated package build failure')
+    failed_file = directory/'evidence/failed-publication.json'
+    expected_failure('generated package build fails before public refs change',
+                     lambda: run([sys.executable, ROOT/'scripts/publish.py', 'sdk', '0.2.0',
+                                  '--local-remotes', remotes, '--source-root', source,
+                                  '--result-file', failed_file]), 'Command failed')
+    assert load(failed_file)['status'] == 'incomplete'
+    sdk_file.write_text(valid_sdk)
+    commit(source, 'test: sdk-5388 restore valid generated package source')
     expected_failure('missing required sdk tag',lambda: publish('sprig','0.2.0',remotes,source),'Command failed')
     release_scenario('coordinated', ['sdk','sprig','firebase'], build_ios=ios)
     # A real public vendor tag exercises manifest -> reviewed markers -> export -> consumer.
@@ -198,8 +259,8 @@ def rehearse(ios=False, consumer_template=None):
     records['note'] = 'The sprig publication branch in this disposable run intentionally retains the final drift injection.'
     for name in NAMES.values():
         assert git(remotes/(name+'.git'), 'rev-parse', 'refs/heads/' + locked_branch) == locked_main_sha
-        assert git(remotes/(name+'.git'), 'symbolic-ref', 'HEAD') == 'refs/heads/' + locked_branch
-    records['lockedMainUnchanged'] = 'passed for all three publication repositories; protected bootstrap remained the default branch'
+        assert git(remotes/(name+'.git'), 'symbolic-ref', 'HEAD') == 'refs/heads/' + RELEASE_BRANCH
+    records['lockedMainUnchanged'] = 'passed for all three publication repositories; default main and frozen develop preserved'
     outputs = {}
     for key,p in inventory(source).items():
         outputs.update({p['path']+'--release_created':'true',p['path']+'--version':versions[key],p['path']+'--sha':git(source,'rev-parse','HEAD')})

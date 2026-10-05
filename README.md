@@ -9,6 +9,8 @@ Dependency-management preparation (2026-09-22): [staged configuration and accept
 ## Branch model
 
 Use `main` for source, Release Please, the independent consumer, and generated publication commits.
+Source merges do not publish packages. Only approved releases update generated repositories.
+See [release boundaries and acceptance checks](docs/release-boundaries/README.md).
 Initial branch creation succeeded. Subsequent source and consumer changes require reviewed PRs.
 Publication updates need an approved publisher App bypass or a reviewed route under the inherited PR rule.
 Plain version tags identify published SwiftPM packages.
@@ -31,7 +33,7 @@ The rehearsal creates a new `.lab/<timestamp>/` folder. It does not reset existi
 It uses real local Git commits, bare repositories, tags, SwiftPM resolution, and compiled consumers.
 It models GitHub Release records as local JSON. It supplies release versions explicitly.
 It does not execute Release Please, GitHub Actions, GitHub App permissions, or GitHub rulesets.
-The rehearsal preserves a protected bootstrap default branch and publishes generated releases on `main`.
+The rehearsal publishes on default `main`, retains a protected bootstrap fixture, and freezes `develop` for compatibility tests. It checks unpublished source changes and exports a fixed approved SHA after source `main` advances.
 Each consumer has fresh SwiftPM state and no GitHub token or credential helper.
 Only the local rehearsal configures public URL mirrors to the bare test repositories.
 The generated package manifests retain the planned public URLs.
