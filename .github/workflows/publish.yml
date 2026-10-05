@@ -1,0 +1,82 @@
+name: Publish experimental SwiftPM package
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        type: choice
+        options: [sdk, sprig, firebase]
+        required: true
+      version:
+        type: string
+        required: true
+      source_sha:
+        description: Full reviewed source commit SHA on dev
+        type: string
+        required: true
+  workflow_call:
+    inputs:
+      package:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      source_sha:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  publish:
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true'
+    runs-on: macos-15
+    environment: experimental-spm-release
+    concurrency:
+      group: experimental-publication-${{ inputs.package }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate fixed package and source ancestry
+        id: preflight
+        env:
+          PACKAGE: ${{ inputs.package }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          python3 - <<'PYCODE'
+          import os, re, subprocess, sys
+          sys.path.insert(0, 'scripts')
+          from common import NAMES
+          key = os.environ['PACKAGE']
+          sha = os.environ['SOURCE_SHA']
+          if key not in NAMES or not re.fullmatch('[0-9a-f]{40}', sha):
+              raise SystemExit('Invalid package or source SHA')
+          subprocess.run(['git','merge-base','--is-ancestor',sha,'origin/dev'],check=True)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+              output.write('repository=' + NAMES[key] + '\n')
+          PYCODE
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: ${{ steps.preflight.outputs.repository }}
+          permission-contents: write
+      - name: Publish and verify served tag
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          ENABLE_EXPERIMENTAL_PUBLICATION: 'true'
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh auth setup-git
+          python3 scripts/publish.py "$PACKAGE" "$VERSION" | tee "$RUNNER_TEMP/publication-result.json"
+      - name: Retain publication evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: publication-${{ inputs.package }}-${{ inputs.version }}
+          path: ${{ runner.temp }}/publication-result.json

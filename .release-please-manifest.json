@@ -1,0 +1,5 @@
+{
+  "Packages/DemoSDK": "0.1.0",
+  "Integrations/Sprig": "0.1.0",
+  "Integrations/Firebase": "0.1.0"
+}

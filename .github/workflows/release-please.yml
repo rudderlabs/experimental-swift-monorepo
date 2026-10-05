@@ -1,0 +1,66 @@
+name: Experimental Release Please
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: experimental-release-please
+  cancel-in-progress: false
+jobs:
+  intent:
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment: experimental-spm-release
+    outputs:
+      sdk_version: ${{ steps.release.outputs['Packages/DemoSDK--version'] }}
+      sdk_sha: ${{ steps.release.outputs['Packages/DemoSDK--sha'] }}
+      sprig_version: ${{ steps.release.outputs['Integrations/Sprig--version'] }}
+      sprig_sha: ${{ steps.release.outputs['Integrations/Sprig--sha'] }}
+      firebase_version: ${{ steps.release.outputs['Integrations/Firebase--version'] }}
+      firebase_sha: ${{ steps.release.outputs['Integrations/Firebase--sha'] }}
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: experimental-swift-monorepo
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5
+        id: release
+        with:
+          token: ${{ steps.token.outputs.token }}
+          target-branch: dev
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+  sdk:
+    needs: [intent]
+    if: needs.intent.outputs.sdk_version != ''
+    uses: ./.github/workflows/publish.yml
+    with:
+      package: sdk
+      version: ${{ needs.intent.outputs.sdk_version }}
+      source_sha: ${{ needs.intent.outputs.sdk_sha }}
+    secrets: inherit
+  sprig:
+    needs: [intent, sdk]
+    if: always() && needs.intent.result == 'success' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped') && needs.intent.outputs.sprig_version != ''
+    uses: ./.github/workflows/publish.yml
+    with:
+      package: sprig
+      version: ${{ needs.intent.outputs.sprig_version }}
+      source_sha: ${{ needs.intent.outputs.sprig_sha }}
+    secrets: inherit
+  firebase:
+    needs: [intent, sdk]
+    if: always() && needs.intent.result == 'success' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped') && needs.intent.outputs.firebase_version != ''
+    uses: ./.github/workflows/publish.yml
+    with:
+      package: firebase
+      version: ${{ needs.intent.outputs.firebase_version }}
+      source_sha: ${{ needs.intent.outputs.firebase_sha }}
+    secrets: inherit

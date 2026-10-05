@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "mode": "experiment-only; excluded from production DAMP baseline",
+  "repositories": [
+    {"name": "rudderlabs/experimental-swift-monorepo", "role": "source", "remediationSource": "rudderlabs/experimental-swift-monorepo"},
+    {"name": "rudderlabs/experimental-rudder-sdk-swift", "role": "publication", "remediationSource": "rudderlabs/experimental-swift-monorepo"},
+    {"name": "rudderlabs/experimental-integration-swift-sprig", "role": "publication", "remediationSource": "rudderlabs/experimental-swift-monorepo"},
+    {"name": "rudderlabs/experimental-integration-swift-firebase", "role": "publication", "remediationSource": "rudderlabs/experimental-swift-monorepo"},
+    {"name": "rudderlabs/experimental-swift-example-consumer-app", "role": "consumer", "remediationSource": "rudderlabs/experimental-swift-example-consumer-app"}
+  ]
+}

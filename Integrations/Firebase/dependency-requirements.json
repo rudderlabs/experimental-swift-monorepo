@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "sdkMinimum": "0.1.0",
+  "vendors": [
+    {
+      "identity": "swift-collections",
+      "product": "OrderedCollections",
+      "url": "https://github.com/apple/swift-collections.git",
+      "version": "1.1.4"
+    }
+  ]
+}

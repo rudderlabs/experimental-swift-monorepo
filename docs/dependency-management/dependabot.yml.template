@@ -1,0 +1,20 @@
+# STAGED TEMPLATE: GitHub does not load this path.
+# Activate only through the reviewed remote-test/migration procedure in README.md.
+# Candidate mode: no routine version PRs. Automatic security PRs are a separate
+# repository setting; neither this limit nor the schedule disables alerts.
+# This is not the selected production PR policy.
+version: 2
+updates:
+  - package-ecosystem: "swift"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 0
+# Intentionally omit target-branch: use the actual GitHub default branch.
+# No severity filters, ignore rules, path exclusions, or broad update groups.
+# Preserve existing Action SHA pins and the organization Action allow-list.

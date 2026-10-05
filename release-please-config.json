@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-v-in-tag": false,
+  "include-component-in-tag": true,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features",
+      "hidden": false
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes",
+      "hidden": false
+    },
+    {
+      "type": "chore",
+      "section": "Internal",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "Internal",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Internal",
+      "hidden": true
+    }
+  ],
+  "packages": {
+    "Packages/DemoSDK": {
+      "component": "sdk",
+      "package-name": "DemoSDK",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "Sources/DemoSDK/Version.swift"
+        }
+      ]
+    },
+    "Integrations/Sprig": {
+      "component": "integration-sprig",
+      "package-name": "DemoSprig",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "Sources/DemoSprig/Version.swift"
+        }
+      ]
+    },
+    "Integrations/Firebase": {
+      "component": "integration-firebase",
+      "package-name": "DemoFirebase",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "Sources/DemoFirebase/Version.swift"
+        }
+      ]
+    }
+  }
+}
