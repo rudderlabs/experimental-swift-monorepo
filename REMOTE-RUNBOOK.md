@@ -1,6 +1,6 @@
 # Remote experiment runbook
 
-Status: prepared, not executed. Complete repository approval before these remote steps.
+Status: repository bootstrap and public baseline consumer verification completed. Hosted Release Please, App/environment controls, repeated publication, and dependency graph tests remain pending.
 The local rehearsal evidence does not close SDK-5388.
 
 The remote proof also includes the [staged dependency-management procedure](docs/dependency-management/README.md). Run its local dependency checks and review package-local release markers before the updater trial. Use the [acceptance commands and hosted gates](docs/dependency-management/ACCEPTANCE.md). Its source/consumer graph checks and failure cases are required evidence; publication success alone is insufficient.
@@ -9,36 +9,32 @@ The remote proof also includes the [staged dependency-management procedure](docs
 
 1. Complete [REPOSITORY-REQUEST.md](REPOSITORY-REQUEST.md).
 2. Review the prepared source and consumer histories and file lists.
-3. Push the source and consumer `dev` branches to their approved repositories.
-4. Leave publication `dev` absent for the publisher's first commit; keep any locked `main` unchanged.
+3. Push the source and consumer `main` branches to their approved repositories.
+4. Seed publication `main` from the approved source export; preserve immutable tags.
 5. Do not push `.lab` histories, local rehearsal tags, local mirror files, or locks produced by local-mirror rehearsals. Review/regenerate public-URL source and consumer lockfiles for the dependency-graph test; follow the staged procedure.
-6. Have the repository administrator set the source and consumer default branches to `dev` after seeding.
-7. Confirm both origins and record the source and consumer `dev` seed SHAs.
-8. Create the protected environment, permit `dev` runs, and configure the scoped App installation.
+6. Verify `main` is the default branch in all five repositories.
+7. Confirm both origins and record the source and consumer `main` seed SHAs.
+8. Create the protected environment, permit `main` runs, and configure the scoped App installation.
 9. Confirm the Actions job can read only the intended credentials and repositories.
 10. Set source variable `EXPERIMENTAL_RELEASES_ENABLED=true` after preflight and review.
 
-Source and consumer have no GitHub `origin` configured locally. This prevents an accidental push to an unapproved destination.
+All five local repositories have SSH GitHub origins and tracking branches. Source alignment is in PR #1; review and merge it before activating releases.
 Generated sibling repositories are local review snapshots. Remote publication must run the exporter against the selected source SHA.
 A generated snapshot from a different source SHA is not a valid retry candidate.
 
 ## Branch model
 
-All source changes and consumer changes merge into `dev`. Release Please explicitly targets `dev`.
-Generated publication commits go to `refs/heads/dev`. Plain semantic version tags point to those commits.
-Customers select package versions through tags; they do not need a branch requirement in `Package.swift`.
-The publication default branch can stay `main`; the publisher does not use it as the generated tree.
-The local rehearsal includes a default `main` branch whose Git receive hook rejects all updates.
+All five repositories use default `main`. Release Please targets `main`.
+The source and consumer require reviewed PRs after initial creation.
+Generated publication updates also inherit the PR requirement. The publisher needs an explicitly approved App bypass or a reviewed update route. Contents write alone is insufficient. Keep release activation disabled until this is resolved.
+Dispatch manual runs using `--ref main` and permit `main` in the release environment policy.
+The local rehearsal protects a separate bootstrap branch and uses default main for publication. It does not prove hosted App bypass or ruleset behavior.
 
-The source and consumer repositories need default branch `dev` for their prepared `workflow_dispatch` entry points.
-Dispatch manual runs using `--ref dev`. Set the release environment's deployment branch policy to permit `dev`.
-If default-branch changes are also forbidden, resolve the manual workflow entry point during provisioning.
-Do not assume selecting a non-default `dev` ref makes an undiscoverable workflow dispatchable.
-See [GitHub workflow dispatch requirements](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
+Follow [SB-01 through SB-06](docs/release-boundaries/README.md) before the remote go decision. Leave the first real release PR open while recording unchanged publication refs. Source component releases represent intent; only verified publication status represents customer success. Retry incomplete jobs against the original source SHA.
 
 ## Baseline manual release
 
-1. Record the full reviewed source `dev` SHA whose manifest versions are all `0.1.0`.
+1. Record the full reviewed source `main` SHA whose manifest versions are all `0.1.0`.
 2. Dispatch `publish.yml` for `sdk`, version `0.1.0`, and that SHA.
 3. Review and approve the environment job.
 4. Verify the public SDK tag and GitHub Release.
@@ -55,7 +51,7 @@ The consumer workflow has no credentials for the internal source monorepo.
 ## Establish the Release Please baseline
 
 The initial scaffold is a hidden `chore` commit. It does not request a feature release.
-Before the first post-baseline change, record the baseline source SHA reachable from `dev` as `bootstrap-sha` in `release-please-config.json`.
+Before the first post-baseline change, record the baseline source SHA reachable from `main` as `bootstrap-sha` in `release-please-config.json`.
 Create matching source component baseline tags and GitHub Releases at the baseline SHA:
 `sdk-0.1.0`, `integration-sprig-0.1.0`, and `integration-firebase-0.1.0`.
 These source tags differ from the plain public package tags. Do not copy publication tags into source.
@@ -79,15 +75,15 @@ Use the consumer dependency generator to prepare and review the upgrade. No auto
 
 ## Recovery validation
 
-Keep locked `main` unchanged throughout these tests.
+Use disposable refs for destructive failure tests. Preserve protected branches and immutable tags.
 
 1. Test a missing publication repository and a token without access.
 2. Test an unclassified or rejected local dependency.
 3. Test a wrong version and an unavailable required SDK version.
 4. Test an existing tag with different source or content.
-5. Interrupt after the generated dev commit is pushed.
+5. Interrupt after the generated publication commit is pushed.
 6. Retry with the original version and source SHA.
-7. Confirm the dev commit is reused and the missing tag is added.
+7. Confirm the publication commit is reused and the missing tag is added.
 8. Interrupt after the public tag is pushed.
 9. Retry with the original version and source SHA.
 10. Confirm the tag is reused and only the missing GitHub Release is created.

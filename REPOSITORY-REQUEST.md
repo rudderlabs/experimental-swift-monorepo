@@ -1,15 +1,11 @@
 # Repository creation request — SDK-5388
 
-Prepared: 2026-09-06. Status: creation request draft; visibility recorded in SDK-5388; provisioning pending. Owner: SDK team.
+Prepared: 2026-09-06. Status: creation request draft; visibility recorded in SDK-5388; repositories created; remote controls pending. Owner: SDK team.
 
 Create the following repositories in `rudderlabs` for the [experimental SwiftPM publication proof](https://linear.app/rudderstack/issue/SDK-5388).
-Use `dev` for development, CI, Release Please, and generated publication commits.
-Organization protection keeps `main` locked. The experiment does not require a `main` write or ruleset exception.
-Request `dev` as the default branch for the source and consumer repositories after their first `dev` push.
-This is required for the prepared manual GitHub Actions workflows to be available.
-The three publication repositories can retain `main` as default; the publisher explicitly creates or selects `dev`.
-Create empty repositories without generated README, license, or ignore files when possible.
-If provisioning adds content to locked `main`, leave that content unchanged and seed only `dev`.
+All five repositories have been created as Public, with default `main`.
+The initial source push succeeded. Use `main` for CI, Release Please, and generated publications.
+Source and consumer updates require reviewed PRs. Repeated publication updates require an explicitly approved publisher App bypass or a reviewed update route; Contents write does not bypass the inherited rule.
 The local source, consumer, and generated package preparation already exists under `/Users/denis/git/swift-monorepo-spm-lab`.
 
 | Repository | Visibility | Purpose | After review |
@@ -37,17 +33,13 @@ Do not add these packages to a Swift registry or the Swift Package Index.
 5. Grant publication tokens only `Metadata: read` and `Contents: write`.
 6. Store `RELEASE_APP_CLIENT_ID` as a source repository variable.
 7. Store `RELEASE_PRIVATE_KEY` in the `experimental-spm-release` environment.
-8. Require a reviewer for initial jobs that use this environment, and permit jobs from `dev`.
-9. Apply review and CI requirements to source `dev` after its initial seed, while allowing reviewed PR merges.
-10. Allow the publisher App to create and update publication `dev`; leave `main` protection unchanged.
+8. Require a reviewer for initial jobs that use this environment, and permit jobs from `main`.
+9. Apply review and CI requirements to source `main` after its initial seed, while allowing reviewed PR merges.
+10. Allow the publisher App to create and update publication `main`; verify the approved publisher route under inherited protection.
 11. Protect full semantic version tags against update and deletion.
 12. Disable Issues and Discussions in the three generated publication repositories.
 13. Keep `EXPERIMENTAL_RELEASES_ENABLED` unset until remote preflight passes.
 14. Keep consumer `EXPERIMENTAL_PACKAGES_AVAILABLE` unset until all baseline tags exist.
-
-A repository administrator may need to set the source and consumer default branches to `dev` after seeding.
-If that change is unavailable, the manual workflow entry points remain a provisioning dependency; using `--ref dev` alone does not remove GitHub's default-branch requirement.
-[GitHub workflow dispatch requirements](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch).
 
 The App must not have repository administration permission or installation access to production repositories.
 A local Git test cannot prove these controls. Record the actual installation scope and ruleset settings during remote validation.

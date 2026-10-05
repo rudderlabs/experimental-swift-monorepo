@@ -10,7 +10,7 @@ on:
         type: string
         required: true
       source_sha:
-        description: Full reviewed source commit SHA on dev
+        description: Full reviewed source commit SHA on main
         type: string
         required: true
   workflow_call:
@@ -24,11 +24,31 @@ on:
       source_sha:
         type: string
         required: true
+    outputs:
+      status:
+        value: ${{ jobs.publish.outputs.status }}
+      package:
+        value: ${{ jobs.publish.outputs.package }}
+      version:
+        value: ${{ jobs.publish.outputs.version }}
+      tag:
+        value: ${{ jobs.publish.outputs.tag }}
+      sourceCommit:
+        value: ${{ jobs.publish.outputs.sourceCommit }}
+      publicationCommit:
+        value: ${{ jobs.publish.outputs.publicationCommit }}
 permissions:
   contents: read
 jobs:
   publish:
     if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true'
+    outputs:
+      status: ${{ steps.verified.outputs.status }}
+      package: ${{ steps.verified.outputs.package }}
+      version: ${{ steps.verified.outputs.version }}
+      tag: ${{ steps.verified.outputs.tag }}
+      sourceCommit: ${{ steps.verified.outputs.sourceCommit }}
+      publicationCommit: ${{ steps.verified.outputs.publicationCommit }}
     runs-on: macos-15
     environment: experimental-spm-release
     concurrency:
@@ -37,7 +57,12 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          persist-credentials: false
+      - name: Checkout approved source snapshot
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
           ref: ${{ inputs.source_sha }}
+          path: .lab/release-source
           fetch-depth: 0
           persist-credentials: false
       - name: Validate fixed package and source ancestry
@@ -54,7 +79,7 @@ jobs:
           sha = os.environ['SOURCE_SHA']
           if key not in NAMES or not re.fullmatch('[0-9a-f]{40}', sha):
               raise SystemExit('Invalid package or source SHA')
-          subprocess.run(['git','merge-base','--is-ancestor',sha,'origin/dev'],check=True)
+          subprocess.run(['git','-C','.lab/release-source','merge-base','--is-ancestor',sha,'origin/main'],check=True)
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write('repository=' + NAMES[key] + '\n')
           PYCODE
@@ -66,6 +91,10 @@ jobs:
           owner: rudderlabs
           repositories: ${{ steps.preflight.outputs.repository }}
           permission-contents: write
+      - name: Configure publication bot identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Publish and verify served tag
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
@@ -74,8 +103,22 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           gh auth setup-git
-          python3 scripts/publish.py "$PACKAGE" "$VERSION" | tee "$RUNNER_TEMP/publication-result.json"
+          python3 scripts/publish.py "$PACKAGE" "$VERSION" --source-root "$GITHUB_WORKSPACE/.lab/release-source" --result-file "$RUNNER_TEMP/publication-result.json"
+      - name: Expose verified publication
+        id: verified
+        run: |
+          python3 - <<'PYCODE'
+          import json, os
+          from pathlib import Path
+          result = json.loads((Path(os.environ['RUNNER_TEMP']) / 'publication-result.json').read_text())
+          if result['status'] != 'published':
+              raise SystemExit('Publication is incomplete')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key in ('status', 'package', 'version', 'tag', 'sourceCommit', 'publicationCommit'):
+                  output.write(key + '=' + result[key] + '\n')
+          PYCODE
       - name: Retain publication evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: publication-${{ inputs.package }}-${{ inputs.version }}

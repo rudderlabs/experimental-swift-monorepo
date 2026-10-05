@@ -1,7 +1,7 @@
 name: Experimental Release Please
 on:
   push:
-    branches: [dev]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -10,14 +10,17 @@ concurrency:
   cancel-in-progress: false
 jobs:
   intent:
-    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/dev'
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: experimental-spm-release
     outputs:
+      sdk_created: ${{ steps.release.outputs['Packages/DemoSDK--release_created'] }}
       sdk_version: ${{ steps.release.outputs['Packages/DemoSDK--version'] }}
       sdk_sha: ${{ steps.release.outputs['Packages/DemoSDK--sha'] }}
+      sprig_created: ${{ steps.release.outputs['Integrations/Sprig--release_created'] }}
       sprig_version: ${{ steps.release.outputs['Integrations/Sprig--version'] }}
       sprig_sha: ${{ steps.release.outputs['Integrations/Sprig--sha'] }}
+      firebase_created: ${{ steps.release.outputs['Integrations/Firebase--release_created'] }}
       firebase_version: ${{ steps.release.outputs['Integrations/Firebase--version'] }}
       firebase_sha: ${{ steps.release.outputs['Integrations/Firebase--sha'] }}
     steps:
@@ -34,12 +37,12 @@ jobs:
         id: release
         with:
           token: ${{ steps.token.outputs.token }}
-          target-branch: dev
+          target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
   sdk:
     needs: [intent]
-    if: needs.intent.outputs.sdk_version != ''
+    if: needs.intent.outputs.sdk_created == 'true'
     uses: ./.github/workflows/publish.yml
     with:
       package: sdk
@@ -48,7 +51,7 @@ jobs:
     secrets: inherit
   sprig:
     needs: [intent, sdk]
-    if: always() && needs.intent.result == 'success' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped') && needs.intent.outputs.sprig_version != ''
+    if: always() && needs.intent.result == 'success' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped') && needs.intent.outputs.sprig_created == 'true'
     uses: ./.github/workflows/publish.yml
     with:
       package: sprig
@@ -57,10 +60,30 @@ jobs:
     secrets: inherit
   firebase:
     needs: [intent, sdk]
-    if: always() && needs.intent.result == 'success' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped') && needs.intent.outputs.firebase_version != ''
+    if: always() && needs.intent.result == 'success' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped') && needs.intent.outputs.firebase_created == 'true'
     uses: ./.github/workflows/publish.yml
     with:
       package: firebase
       version: ${{ needs.intent.outputs.firebase_version }}
       source_sha: ${{ needs.intent.outputs.firebase_sha }}
     secrets: inherit
+  publication-status:
+    needs: [intent, sdk, sprig, firebase]
+    if: always() && needs.intent.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Report verified customer publication
+        env:
+          RELEASE_INTENT: ${{ toJSON(needs.intent.outputs) }}
+          PUBLICATION_JOBS: ${{ toJSON(needs) }}
+          PUBLICATION_STATUS_FILE: ${{ runner.temp }}/publication-status.json
+        run: python3 scripts/publication_status.py
+      - name: Retain publication status
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: customer-publication-status
+          path: ${{ runner.temp }}/publication-status.json

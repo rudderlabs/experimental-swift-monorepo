@@ -10,7 +10,7 @@ This bundle adds the dependency-management requirements to the existing SDK-5388
 
 The candidate uses `open-pull-requests-limit: 0` to avoid routine version PRs. It does not disable alerts or automatic security PRs. The monthly schedule is a required version-update setting, not alert or security-response cadence. Final production PR policy remains undecided; this template is one concrete security-first option.
 
-No `target-branch` is needed when source default is `dev`. Recheck the actual default branch during provisioning. No ignore, exclude, auto-dismissal, or severity filter is proposed. SHA-pinned Actions remain pinned; their native advisory-detection limitation needs separate evidence.
+No `target-branch` is needed when source default is `main`. Recheck the actual default branch during provisioning. No ignore, exclude, auto-dismissal, or severity filter is proposed. SHA-pinned Actions remain pinned; their native advisory-detection limitation needs separate evidence.
 
 If only alert collection is selected, no updater YAML is required. Dependency graph inputs and alert settings are still required.
 
@@ -20,7 +20,7 @@ If only alert collection is selected, no updater YAML is required. Dependency gr
 | --- | --- | --- |
 | Source monorepo | Enable dependency graph and alerts; retain all severities and no-fix/no-PR findings. Capture a clean public-URL `Package.resolved` on the source default branch. | Expected vendor identities and resolved versions appear in GitHub; record default branch, commit, graph export, run date, and any missing packages. |
 | Independent consumer | Keep a reviewed resolution of the published SDK and integrations on its actual default branch. | Customer-facing package versions and transitive vendor versions appear in the consumer graph. Distinguish them from source development resolution. |
-| Publication repositories | Preserve all existing native alerts. Establish a reviewed graph-input route for generated releases. | Verify each actual default branch. Output on `dev` with an empty/stale default `main` is not proof of publication-repository alert coverage. Consumer coverage does not silently replace missing publication visibility. |
+| Publication repositories | Preserve all existing native alerts. Establish a reviewed graph-input route for generated releases. | Verify each actual default branch. Output now uses default `main`, but hosted graph ingestion still requires evidence. Consumer coverage does not silently replace missing publication visibility. |
 | Rules | Inventory effective organization/repository rules. Do not suppress low/development alerts to reduce noise. | Record rule state and preserve original alert identities, including existing dismissed records for audit. |
 | PR settings | Select automatic, selective, or requested security PR handling separately. | Record chosen mode and hosted behavior. No automatic-merge setting is proposed. |
 
@@ -41,7 +41,7 @@ Use the existing exporter and release-marker design. Do not add another version 
 ## Remote experiment procedure — execute later
 
 1. Complete repository provisioning, repository-name alignment, local checks, and the remaining graph-input prerequisites.
-2. Confirm source and consumer default branches are `dev`; leave locked `main` unchanged.
+2. Confirm all five default branches are `main`; subsequent source and consumer updates require reviewed PRs.
 3. Publish the baseline experimental packages through the existing runbook.
 4. Resolve the source vendor and independent consumer from clean public URLs.
 5. Review and commit the appropriate resolved files to their default branches.

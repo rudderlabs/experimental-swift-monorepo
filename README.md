@@ -8,11 +8,13 @@ Dependency-management preparation (2026-09-22): [staged configuration and accept
 
 ## Branch model
 
-Use `dev` for source changes, Release Please PRs, consumer changes, and generated publication commits.
-The organization keeps `main` locked. No workflow in this experiment writes to `main`.
-Plain version tags still identify published SwiftPM packages; consumers do not select `dev` directly.
-Source and consumer repositories need `dev` as their default branch for the prepared manual workflow entry points.
-The publication repositories can keep `main` as default because the publisher explicitly selects `dev`.
+Use `main` for source, Release Please, the independent consumer, and generated publication commits.
+Source merges do not publish packages. Only approved releases update generated repositories.
+See [release boundaries and acceptance checks](docs/release-boundaries/README.md).
+Initial branch creation succeeded. Subsequent source and consumer changes require reviewed PRs.
+Publication updates need an approved publisher App bypass or a reviewed route under the inherited PR rule.
+Plain version tags identify published SwiftPM packages.
+Remote release automation remains disabled until App access, environment policy, and rules are verified.
 
 ## Run the complete local rehearsal
 
@@ -31,7 +33,7 @@ The rehearsal creates a new `.lab/<timestamp>/` folder. It does not reset existi
 It uses real local Git commits, bare repositories, tags, SwiftPM resolution, and compiled consumers.
 It models GitHub Release records as local JSON. It supplies release versions explicitly.
 It does not execute Release Please, GitHub Actions, GitHub App permissions, or GitHub rulesets.
-The rehearsal preserves a locked default `main` in each publication remote and proves all releases can use `dev`.
+The rehearsal publishes on default `main`, retains a protected bootstrap fixture, and freezes `develop` for compatibility tests. It checks unpublished source changes and exports a fixed approved SHA after source `main` advances.
 Each consumer has fresh SwiftPM state and no GitHub token or credential helper.
 Only the local rehearsal configures public URL mirrors to the bare test repositories.
 The generated package manifests retain the planned public URLs.
@@ -69,7 +71,7 @@ Update that requirement in a coordinated release when an integration needs a new
 
 ## Maintainer path
 
-Release Please targets `dev` and owns version intent. It creates component tags such as `sdk-0.1.1` in the source repository.
+Release Please targets `main` and owns version intent. It creates component tags such as `sdk-0.1.1` in the source repository.
 The publisher emits plain tags such as `0.1.1` in the corresponding public package repository.
 SDK publication completes before dependent integration jobs start.
 An integration-only release skips the SDK job.

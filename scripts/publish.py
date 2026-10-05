@@ -110,7 +110,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
         else:
             validate(stage, temp / "validation", mirror_root)
             if has_branch and load(repo / ".publication.json") == expected:
-                # Recover after the generated dev commit was pushed without its tag.
+                # Recover after the generated publication commit was pushed without its tag.
                 sha = git(repo, "rev-parse", "HEAD")
             else:
                 if has_branch:
@@ -124,13 +124,13 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
                             else:
                                 child.unlink()
                 else:
-                    # Bootstrap dev without checking out or inheriting a locked default branch.
+                    # Bootstrap the publication branch without checking out or inheriting a locked default branch.
                     git(repo, "symbolic-ref", "HEAD", f"refs/heads/{RELEASE_BRANCH}")
                 shutil.copytree(stage, repo, dirs_exist_ok=True)
                 sha = commit(repo, f"chore: sdk-5388 publish experimental {key} {version}")
                 git(repo, "push", "origin", f"HEAD:refs/heads/{RELEASE_BRANCH}")
             if interrupt == "after-commit":
-                raise InterruptedError("Injected interruption after dev push")
+                raise InterruptedError("Injected interruption after publication push")
             git(repo, "tag", version)
             git(repo, "push", "origin", f"refs/tags/{version}")
         # Confirm the served tag, not only the success of the push command.
@@ -140,7 +140,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
         if interrupt == "after-tag":
             raise InterruptedError("Injected interruption after tag push")
         release_url = ensure_release(key, version, sha, expected, mirror_root)
-        return {"package": key, "version": version, "sourceCommit": expected["sourceCommit"],
+        return {"status": "published", "package": key, "version": version, "sourceCommit": expected["sourceCommit"],
                 "publicationCommit": sha, "tag": version, "release": release_url,
                 "reusedTag": existing, "branch": RELEASE_BRANCH,
                 "transport": "local-git" if mirror_root else "github"}
@@ -152,5 +152,19 @@ if __name__ == "__main__":
     parser.add_argument("version")
     parser.add_argument("--local-remotes", type=Path)
     parser.add_argument("--interrupt", choices=["after-commit", "after-tag"])
+    parser.add_argument("--source-root", type=Path, default=ROOT)
+    parser.add_argument("--result-file", type=Path)
     args = parser.parse_args()
-    print(json.dumps(publish(args.package, args.version, args.local_remotes, interrupt=args.interrupt), indent=2))
+    try:
+        result = publish(args.package, args.version, args.local_remotes, root=args.source_root, interrupt=args.interrupt)
+    except (ValueError, RuntimeError, OSError, InterruptedError) as error:
+        result = {"status": "incomplete", "package": args.package, "version": args.version,
+                  "error": str(error),
+                  "note": "A public tag may already exist; inspect refs and retry with the original source SHA."}
+        if args.result_file:
+            write_json(args.result_file, result)
+        print(json.dumps(result, indent=2))
+        raise SystemExit(1)
+    if args.result_file:
+        write_json(args.result_file, result)
+    print(json.dumps(result, indent=2))
