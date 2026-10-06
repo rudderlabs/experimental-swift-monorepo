@@ -1,0 +1,111 @@
+name: Experimental publication authentication smoke
+on:
+  push:
+    branches: [test/sdk-5388-publication-auth-smoke]
+permissions:
+  contents: read
+jobs:
+  access:
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repository: experimental-swift-monorepo
+            pull_requests: write
+          - repository: experimental-rudder-sdk-swift
+            pull_requests: ''
+          - repository: experimental-integration-swift-sprig
+            pull_requests: ''
+          - repository: experimental-integration-swift-firebase
+            pull_requests: ''
+    steps:
+      - name: Request existing release identity for fixed experimental repository
+        id: token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: ${{ matrix.repository }}
+          permission-contents: write
+          permission-pull-requests: ${{ matrix.pull_requests }}
+      - name: Collect read-only access evidence
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TOKEN_OUTCOME: ${{ steps.token.outcome }}
+          REPOSITORY: ${{ matrix.repository }}
+          PULL_REQUESTS: ${{ matrix.pull_requests }}
+          SMOKE_HEAD_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, pathlib, urllib.error, urllib.request
+          allowed = {
+              'experimental-swift-monorepo', 'experimental-rudder-sdk-swift',
+              'experimental-integration-swift-sprig', 'experimental-integration-swift-firebase',
+          }
+          repository = os.environ['REPOSITORY']
+          if repository not in allowed:
+              raise SystemExit('Repository is outside experimental scope')
+          token = os.environ.get('GH_TOKEN', '')
+          result = {
+              'repository': 'rudderlabs/' + repository,
+              'observedAt': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'workflowCommit': os.environ['SMOKE_HEAD_SHA'],
+              'tokenCreation': os.environ['TOKEN_OUTCOME'],
+              'requestedPermissions': {'contents': 'write'},
+              'operations': 'HTTP GET only; no repository writes',
+              'protectedMainWriteProven': False,
+              'checks': {},
+          }
+          if os.environ['PULL_REQUESTS']:
+              result['requestedPermissions']['pull_requests'] = os.environ['PULL_REQUESTS']
+          def read(suffix):
+              request = urllib.request.Request(
+                  'https://api.github.com/repos/rudderlabs/' + repository + suffix,
+                  headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json',
+                           'X-GitHub-Api-Version': '2022-11-28'},
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          if token and result['tokenCreation'] == 'success':
+              for name, suffix in [('metadata', ''), ('main', '/branches/main'),
+                                   ('rules', '/rules/branches/main')]:
+                  try:
+                      data = read(suffix)
+                      if name == 'metadata':
+                          data = {'name': data['full_name'], 'defaultBranch': data['default_branch']}
+                      elif name == 'main':
+                          data = {'sha': data['commit']['sha'], 'protected': data['protected']}
+                      else:
+                          data = {'types': sorted({item['type'] for item in data})}
+                      result['checks'][name] = {'status': 'passed', 'data': data}
+                  except urllib.error.HTTPError as error:
+                      result['checks'][name] = {'status': 'failed', 'httpStatus': error.code}
+                  except (urllib.error.URLError, TimeoutError, KeyError, ValueError):
+                      result['checks'][name] = {'status': 'failed', 'reason': 'API read or response failed'}
+          else:
+              result['checks']['authentication'] = {'status': 'failed', 'reason': 'No installation token created'}
+          # Rules-read restrictions are a separate visibility gap, not proof that contents access failed.
+          result['status'] = 'passed' if (
+              result['tokenCreation'] == 'success'
+              and all(result['checks'].get(key, {}).get('status') == 'passed' for key in ('metadata', 'main'))
+          ) else 'failed'
+          result['rulesVisibility'] = result['checks'].get('rules', {}).get('status', 'unverified')
+          path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'authentication-smoke.json'
+          path.write_text(json.dumps(result, indent=2) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## ' + result['repository'] + '\n\n```json\n' + json.dumps(result, indent=2) + '\n```\n')
+          print(json.dumps(result))
+          if result['status'] != 'passed':
+              raise SystemExit(1)
+          PY
+      - name: Retain access evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authentication-${{ matrix.repository }}
+          path: ${{ runner.temp }}/authentication-smoke.json
