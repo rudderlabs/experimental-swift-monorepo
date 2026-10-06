@@ -12,4 +12,9 @@ final class DemoTests: XCTestCase {
         XCTAssertEqual(DemoSprig.track("  Demo   Event ").name, "demo event")
         XCTAssertEqual(DemoFirebase.track([" Demo Event ", "demo event"]).count, 1)
     }
+    func testSprigKeepsAnEventNameForWhitespaceInput() {
+        XCTAssertEqual(DemoSprig.track(" \n\t ").name, "unnamed event")
+        XCTAssertEqual(DemoSprig.track("").name, "unnamed event")
+        XCTAssertEqual(DemoSprig.track(" Purchase ").name, "purchase")
+    }
 }
