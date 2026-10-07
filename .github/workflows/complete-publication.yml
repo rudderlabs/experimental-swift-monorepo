@@ -37,4 +37,5 @@ jobs:
       package: ${{ matrix.package }}
       version: ${{ matrix.version }}
       source_sha: ${{ matrix.source_sha }}
-    secrets: inherit
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}

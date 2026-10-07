@@ -48,7 +48,8 @@ jobs:
       package: sdk
       version: ${{ needs.intent.outputs.sdk_version }}
       source_sha: ${{ needs.intent.outputs.sdk_sha }}
-    secrets: inherit
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
   sprig:
     needs: [intent, sdk]
     if: always() && needs.intent.result == 'success' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped') && needs.intent.outputs.sprig_created == 'true'
@@ -57,7 +58,8 @@ jobs:
       package: sprig
       version: ${{ needs.intent.outputs.sprig_version }}
       source_sha: ${{ needs.intent.outputs.sprig_sha }}
-    secrets: inherit
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
   firebase:
     needs: [intent, sdk]
     if: always() && needs.intent.result == 'success' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped') && needs.intent.outputs.firebase_created == 'true'
@@ -66,7 +68,8 @@ jobs:
       package: firebase
       version: ${{ needs.intent.outputs.firebase_version }}
       source_sha: ${{ needs.intent.outputs.firebase_sha }}
-    secrets: inherit
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
   publication-status:
     needs: [intent, sdk, sprig, firebase]
     if: always() && needs.intent.result == 'success'
