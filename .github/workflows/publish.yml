@@ -35,6 +35,8 @@ on:
         value: ${{ jobs.publish.outputs.tag }}
       sourceCommit:
         value: ${{ jobs.publish.outputs.sourceCommit }}
+      pullRequest:
+        value: ${{ jobs.publish.outputs.pullRequest }}
       publicationCommit:
         value: ${{ jobs.publish.outputs.publicationCommit }}
 permissions:
@@ -49,6 +51,7 @@ jobs:
       tag: ${{ steps.verified.outputs.tag }}
       sourceCommit: ${{ steps.verified.outputs.sourceCommit }}
       publicationCommit: ${{ steps.verified.outputs.publicationCommit }}
+      pullRequest: ${{ steps.verified.outputs.pullRequest }}
     runs-on: macos-15
     environment: experimental-spm-release
     concurrency:
@@ -115,7 +118,7 @@ jobs:
           if result['status'] not in ('published', 'awaiting_review', 'awaiting_dependency'):
               raise SystemExit('Publication is incomplete')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              for key in ('status', 'package', 'version', 'tag', 'sourceCommit', 'publicationCommit'):
+              for key in ('status', 'package', 'version', 'tag', 'sourceCommit', 'publicationCommit', 'pullRequest'):
                   output.write(key + '=' + result.get(key, '') + '\n')
           PYCODE
       - name: Verify anonymous public customer upgrade

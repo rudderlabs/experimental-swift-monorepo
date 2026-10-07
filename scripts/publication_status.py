@@ -27,6 +27,7 @@ def summarize(intent, jobs):
         state = 'published' if verified else outputs['status'] if waiting else 'incomplete'
         packages[key] = {**expected, 'status': state,
                          'jobResult': job.get('result', 'missing'),
+                         'pullRequest': outputs.get('pullRequest') if waiting else None,
                          'publicationCommit': outputs.get('publicationCommit') if verified else None}
     status = ('no_release' if not packages else
               'incomplete' if any(p['status'] == 'incomplete' for p in packages.values()) else

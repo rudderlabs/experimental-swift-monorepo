@@ -36,4 +36,12 @@ if __name__ == '__main__':
     parser.add_argument('destination', type=Path)
     parser.add_argument('--source-root', type=Path, default=ROOT)
     args = parser.parse_args()
-    print(json.dumps(verify(args.package, args.version, args.destination, args.source_root), indent=2))
+    try:
+        result = verify(args.package, args.version, args.destination, args.source_root)
+    except (ValueError, RuntimeError, OSError) as error:
+        result = {'status': 'failed', 'package': args.package, 'version': args.version, 'error': str(error),
+                  'note': 'The public tag may already be served; rerun verification without moving the tag.'}
+        write_json(args.destination / 'customer-result.json', result)
+        print(json.dumps(result, indent=2))
+        raise SystemExit(1)
+    print(json.dumps(result, indent=2))
