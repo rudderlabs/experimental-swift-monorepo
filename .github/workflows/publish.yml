@@ -41,7 +41,7 @@ permissions:
   contents: read
 jobs:
   publish:
-    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true'
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/main'
     outputs:
       status: ${{ steps.verified.outputs.status }}
       package: ${{ steps.verified.outputs.package }}
@@ -91,11 +91,12 @@ jobs:
           owner: rudderlabs
           repositories: ${{ steps.preflight.outputs.repository }}
           permission-contents: write
+          permission-pull-requests: write
       - name: Configure publication bot identity
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-      - name: Publish and verify served tag
+      - name: Prepare reviewed publication or finalize merged package
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           ENABLE_EXPERIMENTAL_PUBLICATION: 'true'
@@ -111,12 +112,24 @@ jobs:
           import json, os
           from pathlib import Path
           result = json.loads((Path(os.environ['RUNNER_TEMP']) / 'publication-result.json').read_text())
-          if result['status'] != 'published':
+          if result['status'] not in ('published', 'awaiting_review', 'awaiting_dependency'):
               raise SystemExit('Publication is incomplete')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               for key in ('status', 'package', 'version', 'tag', 'sourceCommit', 'publicationCommit'):
-                  output.write(key + '=' + result[key] + '\n')
+                  output.write(key + '=' + result.get(key, '') + '\n')
           PYCODE
+      - name: Verify anonymous public customer upgrade
+        if: steps.verified.outputs.status == 'published'
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+        run: python3 scripts/verify_public_customer.py "$PACKAGE" "$VERSION" "$RUNNER_TEMP/customer-evidence" --source-root "$GITHUB_WORKSPACE/.lab/release-source"
+      - name: Retain customer evidence
+        if: always() && steps.verified.outputs.status == 'published'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: customer-${{ inputs.package }}-${{ inputs.version }}
+          path: ${{ runner.temp }}/customer-evidence
       - name: Retain publication evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
