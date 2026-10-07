@@ -11,6 +11,7 @@ import tempfile
 from common import (ROOT, NAMES, OWNER, RELEASE_BRANCH, anonymous_env, commit, file_hashes, git,
                     inventory, load, mirrors, run, swift_options, url, write_json)
 from project import export
+from reviewed_publication import reviewed_commit
 
 
 @contextlib.contextmanager
@@ -106,7 +107,27 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
             if verify_tree(repo) != expected:
                 raise ValueError("Existing tag conflicts with source, version, policy, or file hashes")
             sha = git(repo, "rev-parse", "HEAD")
+            if mirror_root is None:
+                git(repo, "merge-base", "--is-ancestor", sha, "origin/main")
             validate(stage, temp / "validation", mirror_root)
+        elif mirror_root is None:
+            if not has_branch:
+                raise ValueError("Reviewed publication requires a seeded main branch")
+            # Dependency readiness is a waiting state, not permission to publish a broken package.
+            minimum = inventory(root)[key].get("sdkMinimum")
+            if minimum and not run(["git", "ls-remote", url("sdk"), f"refs/tags/{minimum}"]):
+                return {"status": "awaiting_dependency", "package": key, "version": version,
+                        "sourceCommit": expected["sourceCommit"], "dependency": "sdk", "minimum": minimum}
+            validate(stage, temp / "validation", mirror_root)
+            sha, pr = reviewed_commit(key, version, repo, stage, expected, verify_tree)
+            if sha is None:
+                return {"status": "awaiting_review", "package": key, "version": version,
+                        "sourceCommit": expected["sourceCommit"], "pullRequest": pr["html_url"],
+                        "pullRequestNumber": pr["number"], "branch": pr["head"]["ref"]}
+            if interrupt == "after-commit":
+                raise InterruptedError("Injected interruption after verified PR merge")
+            git(repo, "tag", version, sha)
+            git(repo, "push", "origin", f"refs/tags/{version}")
         else:
             validate(stage, temp / "validation", mirror_root)
             if has_branch and load(repo / ".publication.json") == expected:

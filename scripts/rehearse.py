@@ -30,7 +30,8 @@ def rehearse(ios=False, consumer_template=None):
     directory = ROOT / '.lab' / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     directory.mkdir(parents=True)
     source, remotes = directory/'source', directory/'remotes'
-    run(['git', 'clone', '--no-local', '--branch', RELEASE_BRANCH, ROOT, source])
+    run(['git', 'clone', '--no-local', ROOT, source])
+    git(source, 'checkout', '-B', RELEASE_BRANCH)
     remotes.mkdir()
     # Keep a protected bootstrap default separate from the publication branch.
     locked_branch = 'locked-bootstrap' if RELEASE_BRANCH == 'main' else 'main'
@@ -66,7 +67,8 @@ def rehearse(ios=False, consumer_template=None):
         assert before == after, name + ' changed publication refs'
         save()
         print('PASS guard: ' + name, flush=True)
-    versions = {k: '0.1.0' for k in NAMES}
+    versions = {k: load(source/'.release-please-manifest.json')[p['path']]
+                for k, p in inventory(source).items()}
     def consumer(name, requested=None, build_ios=False, branches=()):
         folder = directory / 'consumers' / name
         run(['git', 'clone', '--no-local', '--branch', RELEASE_BRANCH, consumer_template, folder])
@@ -107,6 +109,8 @@ def rehearse(ios=False, consumer_template=None):
         write_json(source/'release/packages.json', config)
         dependency_markers(source)
         commit(source, 'chore: sdk-5388 prepare reviewed experimental release versions')
+    # Reset versions only in the new disposable source fixture, never in the real repository.
+    bump({k: '0.1.0' for k in NAMES})
     release_scenario('baseline', list(NAMES), build_ios=ios)
     for name in NAMES.values():
         remote = remotes/(name+'.git')

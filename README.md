@@ -12,9 +12,10 @@ Use `main` for source, Release Please, the independent consumer, and generated p
 Source merges do not publish packages. Only approved releases update generated repositories.
 See [release boundaries and acceptance checks](docs/release-boundaries/README.md).
 Initial branch creation succeeded. Subsequent source and consumer changes require reviewed PRs.
-Publication updates need an approved publisher App bypass or a reviewed route under the inherited PR rule.
+Publication updates use bot-created PRs under the inherited PR rule. After merge, a central workflow verifies and tags the approved export.
+See [reviewed publication and recovery](docs/reviewed-publication/README.md).
 Plain version tags identify published SwiftPM packages.
-Remote release automation remains disabled until App access, environment policy, and rules are verified.
+Remote execution is gated by `EXPERIMENTAL_RELEASES_ENABLED`. Hosted permission and publication checks remain required evidence.
 
 ## Run the complete local rehearsal
 
@@ -51,7 +52,7 @@ The generated package manifests retain the planned public URLs.
 | `scripts/publish.py` | Build validation, immutable tag publication, drift check, recovery |
 | `scripts/release_plan.py` | Affected package selection and reviewed shared-source markers |
 | `scripts/rehearse.py` | Developer, maintainer, and customer lifecycle rehearsal |
-| `.github/workflows` | Disabled-by-default remote workflow preparation |
+| `.github/workflows` | Gated release, reviewed publication, and automatic recovery workflows |
 
 ## Developer path
 
@@ -73,7 +74,7 @@ Update that requirement in a coordinated release when an integration needs a new
 
 Release Please targets `main` and owns version intent. It creates component tags such as `sdk-0.1.1` in the source repository.
 The publisher emits plain tags such as `0.1.1` in the corresponding public package repository.
-SDK publication completes before dependent integration jobs start.
+Dependent integrations wait until their required SDK tag is available. The recovery workflow resumes pending publication.
 An integration-only release skips the SDK job.
 Publication jobs use a fixed inventory, an environment-scoped App token, and one concurrency group per package.
 A retry must use the original source SHA and version. A newer SHA cannot reuse the same version.

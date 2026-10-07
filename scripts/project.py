@@ -5,14 +5,14 @@ from pathlib import Path
 import re
 import shutil
 
-from common import ROOT, file_hashes, git, inventory, load, run, url, write_json
+from common import ROOT, anonymous_env, file_hashes, git, inventory, load, run, url, write_json
 from dependency_policy import markers as dependency_markers
 
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 
 
 def graph(root):
-    data = json.loads(run(["swift", "package", "describe", "--type", "json"], cwd=root))
+    data = json.loads(run(["swift", "package", "describe", "--type", "json"], cwd=root, env=anonymous_env()))
     return {t["name"]: t for t in data["targets"]}
 
 

@@ -48,3 +48,15 @@ class PublicationStatusTests(unittest.TestCase):
         self.assertEqual(result['status'], 'incomplete')
         self.assertEqual(result['packages']['sprig']['status'], 'published')
         self.assertEqual(result['packages']['sdk']['status'], 'incomplete')
+
+    def test_waiting_states_are_not_customer_success(self):
+        for state in ('awaiting_review', 'awaiting_dependency'):
+            self.jobs['sprig']['outputs']['status'] = state
+            result = summarize(self.intent, self.jobs)
+            self.assertEqual(result['status'], 'awaiting_publication')
+            self.assertEqual(result['packages']['sprig']['status'], state)
+            self.assertIsNone(result['packages']['sprig']['publicationCommit'])
+
+    def test_waiting_wrong_source_is_incomplete(self):
+        self.jobs['sprig']['outputs'].update(status='awaiting_review', sourceCommit='c' * 40)
+        self.assertEqual(summarize(self.intent, self.jobs)['status'], 'incomplete')

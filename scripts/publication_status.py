@@ -21,11 +21,17 @@ def summarize(intent, jobs):
                     and all(outputs.get(field) == value and value for field, value in expected.items())
                     and outputs.get('tag') == expected['version']
                     and bool(re.fullmatch('[0-9a-f]{40}', outputs.get('publicationCommit', ''))))
-        packages[key] = {**expected, 'status': 'published' if verified else 'incomplete',
+        waiting = (job.get('result') == 'success'
+                   and outputs.get('status') in ('awaiting_review', 'awaiting_dependency')
+                   and all(outputs.get(field) == value and value for field, value in expected.items()))
+        state = 'published' if verified else outputs['status'] if waiting else 'incomplete'
+        packages[key] = {**expected, 'status': state,
                          'jobResult': job.get('result', 'missing'),
+                         'pullRequest': outputs.get('pullRequest') if waiting else None,
                          'publicationCommit': outputs.get('publicationCommit') if verified else None}
     status = ('no_release' if not packages else
-              'published' if all(p['status'] == 'published' for p in packages.values()) else 'incomplete')
+              'incomplete' if any(p['status'] == 'incomplete' for p in packages.values()) else
+              'published' if all(p['status'] == 'published' for p in packages.values()) else 'awaiting_publication')
     return {'status': status, 'packages': packages,
             'note': 'Incomplete jobs may already have served a tag; inspect refs before retrying. '
                     'Source component releases are internal intent, not customer publication evidence.'}
