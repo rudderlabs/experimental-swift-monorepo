@@ -4,27 +4,28 @@ import os
 from pathlib import Path
 import tempfile
 
-from common import ROOT, NAMES, OWNER, SOURCE_NAME, git, load, run, url
+from common import ROOT, OWNER, SOURCE_NAME, git, inventory, run, url
 from project import SEMVER
 from publish import verify_tree
-
-COMPONENTS = {'sdk': 'sdk', 'sprig': 'integration-sprig', 'firebase': 'integration-firebase'}
 
 
 def queue(root=ROOT):
     pages = json.loads(run(['gh', 'api', '--paginate', '--slurp',
                            f'repos/{OWNER}/{SOURCE_NAME}/releases?per_page=100']))
     pending = []
-    for key in NAMES:
+    packages = inventory(root)
+    # SDK work precedes integration work.
+    for key in sorted(packages, key=lambda k: k != 'sdk'):
+        component = packages[key]['component']
         with tempfile.TemporaryDirectory(prefix='publication-queue-') as temp:
             repo = Path(temp) / 'publication'
-            run(['git', 'clone', '--no-checkout', url(key), repo])
+            run(['git', 'clone', '--no-checkout', url(key, root), repo])
             releases = json.loads(run(['gh', 'api', '--paginate', '--slurp',
-                                      f'repos/{OWNER}/{NAMES[key]}/releases?per_page=100']))
+                                      f'repos/{OWNER}/{packages[key]["repository"]}/releases?per_page=100']))
             public_releases = [r for page in releases for r in page]
             intents = []
             for release in (r for page in pages for r in page):
-                prefix = COMPONENTS[key] + '-'
+                prefix = component + '-'
                 tag = release['tag_name']
                 if release['draft'] or release['prerelease'] or not tag.startswith(prefix):
                     continue

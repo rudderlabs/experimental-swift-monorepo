@@ -9,11 +9,13 @@ import shutil
 import sys
 import tempfile
 
-from common import ROOT, NAMES, CONSUMER_NAME, RELEASE_BRANCH, commit, git, inventory, load, run, write_json
+from common import ROOT, CONSUMER_NAME, RELEASE_BRANCH, allowlist, commit, git, inventory, load, run, write_json
 from project import export
 from publish import publish, publication_lock
 from release_plan import affected, from_outputs, shared_markers
 from dependency_policy import markers as dependency_markers, sync_inventory
+
+NAMES = allowlist()  # old demo layout until the rehearsal is rewritten
 
 
 def module(path, name):

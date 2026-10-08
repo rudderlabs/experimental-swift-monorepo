@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        type: choice
-        options: [sdk, sprig, firebase]
+        description: Package key from release/allowlist.json and release/packages.json
+        type: string
         required: true
       version:
         type: string
@@ -77,7 +77,7 @@ jobs:
           path: .lab/release-source
           fetch-depth: 0
           persist-credentials: false
-      - name: Validate fixed package and source ancestry
+      - name: Validate allowlisted package and source ancestry
         id: preflight
         env:
           PACKAGE: ${{ inputs.package }}
@@ -85,15 +85,19 @@ jobs:
         run: |
           python3 - <<'PYCODE'
           import os, re, subprocess, sys
+          from pathlib import Path
           sys.path.insert(0, 'scripts')
-          from common import NAMES
+          from common import allowlist, inventory
           key = os.environ['PACKAGE']
           sha = os.environ['SOURCE_SHA']
-          if key not in NAMES or not re.fullmatch('[0-9a-f]{40}', sha):
+          names = allowlist()
+          if key not in names or not re.fullmatch('[0-9a-f]{40}', sha):
               raise SystemExit('Invalid package or source SHA')
+          if inventory(Path('.lab/release-source')).get(key, {}).get('repository') != names[key]:
+              raise SystemExit('Package is not in the source inventory with its allowlisted repository')
           subprocess.run(['git','-C','.lab/release-source','merge-base','--is-ancestor',sha,'origin/main'],check=True)
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
-              output.write('repository=' + NAMES[key] + '\n')
+              output.write('repository=' + names[key] + '\n')
           PYCODE
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         id: token
@@ -142,9 +146,17 @@ jobs:
         with:
           name: customer-${{ inputs.package }}-${{ inputs.version }}
           path: ${{ runner.temp }}/customer-evidence
+      - name: Record job result for the batch status
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          printf '{"result": "%s"}\n' "$JOB_STATUS" > "$RUNNER_TEMP/publication-job.json"
       - name: Retain publication evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: publication-${{ inputs.package }}-${{ inputs.version }}
-          path: ${{ runner.temp }}/publication-result.json
+          path: |
+            ${{ runner.temp }}/publication-result.json
+            ${{ runner.temp }}/publication-job.json

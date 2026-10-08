@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from common import (ROOT, NAMES, OWNER, RELEASE_BRANCH, anonymous_env, commit, file_hashes, git,
+from common import (ROOT, OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, file_hashes, git,
                     inventory, load, mirrors, run, swift_options, url, write_json)
 from project import export
 from reviewed_publication import reviewed_commit
@@ -18,12 +18,12 @@ DESTINATIONS = {"iOS": "iOS", "macOS": "macOS", "macCatalyst": "macOS,variant=Ma
 
 
 @contextlib.contextmanager
-def publication_lock(mirror_root, key):
+def publication_lock(mirror_root, name):
     # GitHub uses the equivalent per-package workflow concurrency group.
     if mirror_root is None:
         yield
         return
-    lock = mirror_root / (NAMES[key] + ".lock")
+    lock = mirror_root / (name + ".lock")
     with lock.open("w") as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -68,14 +68,15 @@ def validate(stage, state, mirror_root, package):
 
 def ensure_release(key, version, sha, provenance, mirror_root):
     body = f"Temporary unsupported experiment.\n\nSource: {provenance['sourceCommit']}\nPublication: {sha}\n"
+    name = allowlist()[key]
     if mirror_root:
-        record = mirror_root.parent / "modeled-github-releases" / NAMES[key] / (version + ".json")
+        record = mirror_root.parent / "modeled-github-releases" / name / (version + ".json")
         value = {"tag": version, "commit": sha, "body": body, "kind": "local-model-not-github"}
         if record.exists() and load(record) != value:
             raise ValueError("Modeled release metadata conflicts")
         write_json(record, value)
         return str(record)
-    repo = f"{OWNER}/{NAMES[key]}"
+    repo = f"{OWNER}/{name}"
     # Listing distinguishes confirmed absence from API, network, and authentication errors.
     records = json.loads(run(["gh", "api", "--paginate", "--slurp", f"repos/{repo}/releases"]))
     found = [r for page in records for r in page if r["tag_name"] == version]
@@ -91,22 +92,24 @@ def ensure_release(key, version, sha, provenance, mirror_root):
 
 
 def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
-    if key not in NAMES or inventory(root).get(key, {}).get("repository") != NAMES[key]:
-        raise ValueError("Destination is outside the fixed experimental inventory")
+    # The trusted checkout's allowlist must agree with the source snapshot's inventory and allowlist.
+    name = allowlist().get(key)
+    if not name or inventory(root).get(key, {}).get("repository") != name:
+        raise ValueError("Destination is outside the reviewed allowlist")
     if mirror_root:
         mirror_root = mirror_root.resolve()
-        remote = mirror_root / (NAMES[key] + ".git")
+        remote = mirror_root / (name + ".git")
         if not remote.is_dir() or git(remote, "rev-parse", "--is-bare-repository") != "true":
             raise ValueError("Local publication repository is missing or is not bare")
     else:
         if os.environ.get("ENABLE_EXPERIMENTAL_PUBLICATION") != "true":
             raise ValueError("Remote publication is disabled")
         remote = url(key)
-        details = json.loads(run(["gh", "repo", "view", f"{OWNER}/{NAMES[key]}",
+        details = json.loads(run(["gh", "repo", "view", f"{OWNER}/{name}",
                                   "--json", "nameWithOwner,visibility,isArchived"]))
-        if details != {"nameWithOwner": f"{OWNER}/{NAMES[key]}", "visibility": "PUBLIC", "isArchived": False}:
+        if details != {"nameWithOwner": f"{OWNER}/{name}", "visibility": "PUBLIC", "isArchived": False}:
             raise ValueError("Experimental repository identity, visibility, or archive state differs")
-    with publication_lock(mirror_root, key), tempfile.TemporaryDirectory(prefix=f"publish-{key}-") as temp:
+    with publication_lock(mirror_root, name), tempfile.TemporaryDirectory(prefix=f"publish-{key}-") as temp:
         temp = Path(temp)
         stage, repo = temp / "export", temp / "publication"
         expected = export(key, version, stage, root)
@@ -187,7 +190,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("package", choices=list(NAMES))
+    parser.add_argument("package", choices=list(allowlist()))
     parser.add_argument("version")
     parser.add_argument("--local-remotes", type=Path)
     parser.add_argument("--interrupt", choices=["after-commit", "after-tag"])

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "pkg:tooling",
+    "color": "5319e7",
+    "description": "Release tooling and CI"
+  },
+  {
+    "name": "from-public-repo",
+    "color": "fbca04",
+    "description": "Reported in a publication repository"
+  }
+]

@@ -46,12 +46,15 @@ The generated package manifests retain the planned public URLs.
 | Path | Role |
 | --- | --- |
 | `Tests/Fixtures/demo` | Demo SDK, Sprig, Firebase and shared code, used as test data only |
-| `release/packages.json` | Fixed publication destinations and dependency policies |
+| `release/packages.json` | The only package list: paths, components, targets, platforms and dependency policies |
+| `release/allowlist.json` | Reviewed write targets (package key to repository); a key without a package is reserved |
+| `scripts/check_inventory.py` | CI check: package list, allowlist, Release Please entries, generated files and action SHA pins agree |
+| `scripts/generate_github.py` | Regenerates issue forms, `labeler.yml` and `labels.json` from the package list (`--check` in CI) |
 | `scripts/project.py` | Graph inspection and deterministic standalone export |
 | `scripts/publish.py` | Build validation, immutable tag publication, drift check, recovery |
 | `scripts/release_plan.py` | Affected package selection and reviewed shared-source markers |
 | `scripts/rehearse.py` | Developer, maintainer, and customer lifecycle rehearsal |
-| `.github/workflows` | Gated release, reviewed publication, and automatic recovery workflows |
+| `.github/workflows` | Gated release, reviewed publication, and manual recovery workflows |
 
 ## Developer path
 
@@ -59,6 +62,7 @@ The generated package manifests retain the planned public URLs.
 2. Run the Python tests (`python3 -m unittest discover -s Tests -p 'test_*.py'`).
 3. If shared source changes, run `python3 scripts/release_plan.py sync-shared`.
 4. Include the changed marker files in the same `fix:` or `feat:` commit.
+   After changing `release/packages.json`, run `python3 scripts/generate_github.py` and `python3 scripts/check_inventory.py`.
 5. Review the affected integration paths in the commit.
 6. Let Release Please prepare versions, Swift version constants, and changelogs after remote enablement.
 
@@ -84,7 +88,9 @@ Release Please targets `main` and owns version intent. It creates component tags
 The publisher emits plain tags such as `0.1.1` in the corresponding public package repository.
 Dependent integrations wait until their required SDK tag is available. The recovery workflow resumes pending publication.
 An integration-only release skips the SDK job.
-Publication jobs use a fixed inventory, an environment-scoped App token, and one concurrency group per package.
+`release-please.yml` turns the path-based Release Please outputs into a plan (`release_plan.py from-outputs`): a `publish (sdk)` job, then one matrix job with a `publish (<key>)` leg per released integration. No workflow lists package names.
+Publication jobs take destinations only from `release/allowlist.json` (every package must be allowlisted with its own repository), use an environment-scoped App token, and run in one concurrency group per package.
+Adding a package needs only its `release/packages.json` entry, its allowlist entry, and the regenerated GitHub files.
 A retry must use the original source SHA and version. A newer SHA cannot reuse the same version.
 The manual workflow is also the recovery entry point if Release Please outputs are absent on rerun.
 

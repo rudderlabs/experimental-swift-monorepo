@@ -1,6 +1,7 @@
 """Shared code stays `package`-level and vendors cleanly into each standalone integration."""
 import os
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -9,7 +10,7 @@ os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # ignore personal git settings suc
 os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from common import anonymous_env, commit, git, run, swift_options, write_json
+from common import ROOT, anonymous_env, commit, git, run, swift_options, write_json
 from dependency_policy import sync_inventory
 from project import export, strip_imports, wide_access
 from release_plan import shared_markers
@@ -56,6 +57,7 @@ class AccessLevelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             write_json(root / "release/packages.json", {"schemaVersion": 1, "packages": {}})
+            shutil.copyfile(ROOT / "release/allowlist.json", root / "release/allowlist.json")
             source = root / "Shared/Text/Text.swift"
             source.parent.mkdir(parents=True)
             source.write_text("import Foundation\n\n// public is fine here\npackage enum A {}\npublic enum B {}\n")
@@ -117,6 +119,7 @@ class VendoredBuildTests(unittest.TestCase):
                   "policies": {"TextShared": {"mode": "vendor"}}, "platforms": ["macOS 12"], "toolsVersion": "5.9"}
             for key, name, repository in [("sprig", "A", "experimental-integration-swift-sprig"),
                                           ("firebase", "B", "experimental-integration-swift-firebase")]}})
+        shutil.copyfile(ROOT / "release/allowlist.json", root / "release/allowlist.json")
         sync_inventory(root)
         self.assertEqual(shared_markers(root), ["sprig", "firebase"])
         git(root, "init", "--initial-branch=main")

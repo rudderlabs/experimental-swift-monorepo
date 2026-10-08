@@ -3,7 +3,7 @@
 This is a local experimental repository for SDK-5388.
 Read README.md and REMOTE-RUNBOOK.md before work.
 Do not publish to GitHub unless the user authorizes that remote action.
-Only the fixed experimental repository inventory is valid.
+Only repositories in `release/allowlist.json` are valid write targets; `release/packages.json` is the only package list. Run `python3 scripts/check_inventory.py` after changing either.
 Never replace immutable tags or reset previous `.lab` runs.
 Run `python3 -m unittest discover -s Tests -p 'test_*.py'` for script changes. The demo packages are test data in `Tests/Fixtures/demo/`; `scripts/rehearse.py` still targets the old layout until it is rewritten.
 The consumer template is the sibling `experimental-swift-example-consumer-app` repository.

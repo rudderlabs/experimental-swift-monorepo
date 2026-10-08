@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from publication_queue import queue
 import json
 
+FIXTURE = Path(__file__).resolve().parent / 'Fixtures' / 'demo'  # inventory and allowlist only; Git is modeled
+
 
 class PublicationQueueTests(unittest.TestCase):
     def run_queue(self, published=False, wrong_source=False, release_missing=False):
@@ -29,7 +31,7 @@ class PublicationQueueTests(unittest.TestCase):
                               if published and not release_missing and 'sprig/releases?' in args[-1] else [[]])
         def git_command(repo, *args):
             if args[0] == 'rev-parse':
-                return sha if repo == Path('/source') else pub
+                return sha if repo == FIXTURE else pub
             if args[0] == 'for-each-ref':
                 return 'refs/tags/0.1.1' if published else ''
             return ''
@@ -37,7 +39,7 @@ class PublicationQueueTests(unittest.TestCase):
              patch('publication_queue.git', side_effect=git_command), \
              patch('publication_queue.verify_tree', return_value={
                  'sourceCommit': 'c' * 40 if wrong_source else sha, 'package': 'sprig', 'version': '0.1.1'}):
-            return queue(Path('/source'))
+            return queue(FIXTURE)
 
     def test_pending_release_is_recovered_without_action_outputs(self):
         self.assertEqual(self.run_queue(), [{'package': 'sprig', 'version': '0.1.1', 'source_sha': 'a' * 40}])

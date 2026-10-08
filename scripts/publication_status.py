@@ -3,19 +3,18 @@ import json
 import os
 from pathlib import Path
 import re
+import tempfile
 
-from common import NAMES
+from common import load, run
 
 
-def summarize(intent, jobs):
+def summarize(plan, jobs):
     packages = {}
-    for key in NAMES:
-        if str(intent.get(key + '_created', '')).lower() != 'true':
-            continue
+    for item in plan:
+        key = item['package']
         job = jobs.get(key, {})
         outputs = job.get('outputs', {})
-        expected = {'package': key, 'version': intent.get(key + '_version'),
-                    'sourceCommit': intent.get(key + '_sha')}
+        expected = {'package': key, 'version': item.get('version'), 'sourceCommit': item.get('sha')}
         verified = (job.get('result') == 'success'
                     and outputs.get('status') == 'published'
                     and all(outputs.get(field) == value and value for field, value in expected.items())
@@ -37,8 +36,30 @@ def summarize(intent, jobs):
                     'Source component releases are internal intent, not customer publication evidence.'}
 
 
+def collect(plan, download):
+    """Matrix legs share one output slot, so each publish job leaves its result in its own artifact."""
+    jobs = {}
+    for item in plan:
+        folder = download(f"publication-{item['package']}-{item['version']}")
+        if folder is None:
+            continue
+        job, result = folder / 'publication-job.json', folder / 'publication-result.json'
+        jobs[item['package']] = {'result': load(job)['result'] if job.exists() else 'missing',
+                                 'outputs': load(result) if result.exists() else {}}
+    return jobs
+
+
 if __name__ == '__main__':
-    result = summarize(json.loads(os.environ['RELEASE_INTENT']), json.loads(os.environ['PUBLICATION_JOBS']))
+    plan = json.loads(os.environ['RELEASE_PLAN'])
+    with tempfile.TemporaryDirectory(prefix='publication-status-') as temp:
+        def download(name):
+            try:
+                run(['gh', 'run', 'download', os.environ['GITHUB_RUN_ID'], '--repo', os.environ['GITHUB_REPOSITORY'],
+                     '--name', name, '--dir', Path(temp) / name])
+            except RuntimeError:
+                return None
+            return Path(temp) / name
+        result = summarize(plan, collect(plan, download))
     text = json.dumps(result, indent=2) + '\n'
     Path(os.environ['PUBLICATION_STATUS_FILE']).write_text(text)
     if os.environ.get('GITHUB_STEP_SUMMARY'):

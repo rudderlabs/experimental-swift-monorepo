@@ -3,14 +3,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-NAMES = {
-    "sdk": "experimental-rudder-sdk-swift",
-    "sprig": "experimental-integration-swift-sprig",
-    "firebase": "experimental-integration-swift-firebase",
-}
+KEY = re.compile(r"[a-z][a-z0-9-]*\Z")
+REPOSITORY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 SOURCE_NAME = "experimental-swift-monorepo"
 CONSUMER_NAME = "experimental-swift-example-consumer-app"
 OWNER = "rudderlabs"
@@ -47,13 +45,30 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
-def url(key):
-    return f"https://github.com/{OWNER}/{NAMES[key]}.git"
+def allowlist(root=ROOT):
+    """Reviewed write targets (package key -> repository under OWNER). Keys without a package are reserved."""
+    data = load(root / "release/allowlist.json")
+    names = data.get("repositories")
+    if data.get("schemaVersion") != 1 or data.get("owner") != OWNER or not isinstance(names, dict):
+        raise ValueError("release/allowlist.json needs schemaVersion 1, owner " + OWNER + " and repositories")
+    if not all(isinstance(k, str) and KEY.match(k) and isinstance(v, str) and REPOSITORY.match(v)
+               for k, v in names.items()) or len(set(names.values())) != len(names):
+        raise ValueError("Allowlist keys and repositories must be valid and unique")
+    return names
+
+
+def url(key, root=ROOT):
+    return f"https://github.com/{OWNER}/{allowlist(root)[key]}.git"
 
 
 def inventory(root=ROOT):
+    """The only package list, in allowlist order. Every package must be allowlisted with its own repository."""
     packages = load(root / "release/packages.json")["packages"]
-    return {key: packages[key] for key in NAMES if key in packages}
+    names = allowlist(root)
+    for key, package in packages.items():
+        if names.get(key) != package.get("repository"):
+            raise ValueError(f"Package is not allowlisted with its repository: {key}")
+    return {key: packages[key] for key in names if key in packages}
 
 
 def file_hashes(root):
@@ -81,6 +96,6 @@ def swift_options(state):
 
 def mirrors(package, mirror_root):
     if mirror_root:
-        for key, name in NAMES.items():
+        for key, name in allowlist().items():
             run(["swift", "package", "config", "set-mirror", "--original", url(key),
                  "--mirror", (mirror_root / (name + ".git")).as_uri()], cwd=package)

@@ -28,6 +28,7 @@ All five repositories use default `main`. Release Please targets `main`.
 The source and consumer require reviewed PRs after initial creation.
 Generated publication updates also inherit the PR requirement. The publisher uses the [reviewed publication route](docs/reviewed-publication/README.md). The existing App needs Contents write and Pull requests write. No main bypass is required.
 Dispatch manual runs using `--ref main` and permit `main` in the release environment policy.
+`publish.yml` takes the package key as text and accepts only a key in `release/allowlist.json` that the source snapshot's `release/packages.json` lists with the same repository. Release runs use a `publish (sdk)` job and one integrations matrix job (`publish (<key>)` per leg); the batch status reads each leg's `publication-<key>-<version>` artifact.
 The full local rehearsal protects a separate bootstrap branch. Reviewed-route regression tests reject ordinary main pushes. Neither proves hosted App permissions or ruleset behavior.
 
 Follow [SB-01 through SB-06](docs/release-boundaries/README.md) before the remote go decision. Leave the first real release PR open while recording unchanged publication refs. Source component releases represent intent; only verified publication status represents customer success. Retry incomplete jobs against the original source SHA.

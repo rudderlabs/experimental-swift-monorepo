@@ -2,6 +2,7 @@
 import os
 import json
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # ignore personal git settings suc
 os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from common import commit, git, inventory, load, write_json
+from common import ROOT, commit, git, inventory, load, write_json
 from dependency_policy import markers, requirement, sync_inventory
 from project import export
 
@@ -53,6 +54,7 @@ class PackageExportTests(unittest.TestCase):
             "sprig": {"path": "Integrations/Kit", "target": "Kit", "repository": "experimental-integration-swift-sprig",
                       "policies": {"Core": {"mode": "external", "package": "sdk"}}, "sdkMinimum": "1.0.0",
                       "platforms": ["iOS 15"], "toolsVersion": "5.10"}}})
+        shutil.copyfile(ROOT / "release/allowlist.json", self.root / "release/allowlist.json")
         sync_inventory(self.root)
         git(self.root, "init", "--initial-branch=main")
         commit(self.root, "test: tiny export fixture")

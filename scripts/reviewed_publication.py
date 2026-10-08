@@ -3,7 +3,7 @@ import json
 import re
 import shutil
 
-from common import OWNER, NAMES, RELEASE_BRANCH, commit, git, load, run
+from common import OWNER, RELEASE_BRANCH, allowlist, commit, git, load, run
 
 BOT = 'rudderstack-github-actions[bot]'
 
@@ -12,13 +12,17 @@ def branch_for(key, version):
     return f'publication/{key}/{version}'
 
 
+def repository_for(key):
+    return f'{OWNER}/{allowlist()[key]}'
+
+
 def api(endpoint):
     return json.loads(run(['gh', 'api', endpoint]))
 
 
 def find_pr(key, version):
     branch = branch_for(key, version)
-    repository = f'{OWNER}/{NAMES[key]}'
+    repository = repository_for(key)
     pages = json.loads(run(['gh', 'api', '--paginate', '--slurp',
                            f'repos/{repository}/pulls?state=all&head={OWNER}:{branch}&base=main&per_page=100']))
     prs = [p for page in pages for p in page]
@@ -28,7 +32,7 @@ def find_pr(key, version):
 
 
 def validate_pr(pr, key, version):
-    repository = f'{OWNER}/{NAMES[key]}'
+    repository = repository_for(key)
     if (pr['base']['ref'] != RELEASE_BRANCH
             or pr['base']['repo']['full_name'] != repository
             or pr['head']['ref'] != branch_for(key, version)
@@ -84,7 +88,7 @@ def reviewed_commit(key, version, repo, stage, expected, verify_tree):
                      'After merge, the central publication workflow verifies the exact merge commit, creates the immutable '
                      'SwiftPM version tag, and creates the GitHub Release. An open PR does not publish a version.\n\n'
                      '[SDK-5388](https://linear.app/rudderstack/issue/SDK-5388)\n')
-    run(['gh', 'pr', 'create', '--repo', f'{OWNER}/{NAMES[key]}', '--base', RELEASE_BRANCH,
+    run(['gh', 'pr', 'create', '--repo', repository_for(key), '--base', RELEASE_BRANCH,
          '--head', branch, '--title', f'chore: publish experimental {key} {version}', '--body-file', notes])
     pr = find_pr(key, version)
     if not pr:

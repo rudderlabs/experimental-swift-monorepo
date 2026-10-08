@@ -136,7 +136,7 @@ def export(key, version, destination, root=ROOT):
         mode = policies.get(name, {}).get("mode", "source")
         if mode == "external":
             dependency = policies[name]
-            external.append(f'.package(url: "{url(dependency["package"])}", from: "{package["sdkMinimum"]}")')
+            external.append(f'.package(url: "{url(dependency["package"], root)}", from: "{package["sdkMinimum"]}")')
             target_deps.append(f'.product(name: "{name}", package: "{packages[dependency["package"]]["repository"]}")')
             continue
         entry = targets[name]

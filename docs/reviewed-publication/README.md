@@ -2,8 +2,8 @@
 
 The existing `rudderstack-github-actions` GitHub App creates publication PRs.
 No new GitHub App or branch-rule bypass is required.
-The App needs Contents write and Pull requests write on the three fixed experimental publication repositories.
-The normal Actions token remains Contents read. Production repositories are outside the fixed inventory.
+The App needs Contents write and Pull requests write on the experimental publication repositories in `release/allowlist.json`.
+The normal Actions token remains Contents read. Production repositories are not on the allowlist.
 
 ## Release flow
 
@@ -39,7 +39,7 @@ A tag always identifies the verified merge commit, not whichever commit is curre
 
 The publisher compares all generated file hashes and the complete provenance record with a new deterministic export.
 Updating a PR's hashes together with an unauthorized file change does not bypass this comparison.
-It checks PR bot identity, fixed destination, source ancestry, and merged commit ancestry.
+It checks PR bot identity, allowlisted destination, source ancestry, and merged commit ancestry.
 A closed, unmerged PR, a conflicting version branch, manual drift, or an existing tag conflict stops publication.
 The publisher never force-pushes a publication branch or rewrites a version tag.
 
