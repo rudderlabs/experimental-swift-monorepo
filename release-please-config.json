@@ -1,11 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "simple",
-  "bootstrap-sha": "30d2f67a9e23b7db8bcf034191acbfaa52a8e3f1",
   "include-v-in-tag": false,
   "include-component-in-tag": true,
-  "bump-minor-pre-major": true,
-  "bump-patch-for-minor-pre-major": true,
   "changelog-sections": [
     {
       "type": "feat",
@@ -18,7 +15,27 @@
       "hidden": false
     },
     {
+      "type": "perf",
+      "section": "Performance Improvements",
+      "hidden": false
+    },
+    {
+      "type": "refactor",
+      "section": "Code Refactoring",
+      "hidden": false
+    },
+    {
       "type": "chore",
+      "section": "Miscellaneous Chores",
+      "hidden": false
+    },
+    {
+      "type": "docs",
+      "section": "Internal",
+      "hidden": true
+    },
+    {
+      "type": "test",
       "section": "Internal",
       "hidden": true
     },
@@ -28,41 +45,20 @@
       "hidden": true
     },
     {
-      "type": "test",
+      "type": "style",
+      "section": "Internal",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Internal",
+      "hidden": true
+    },
+    {
+      "type": "revert",
       "section": "Internal",
       "hidden": true
     }
   ],
-  "packages": {
-    "Packages/DemoSDK": {
-      "component": "sdk",
-      "package-name": "DemoSDK",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "Sources/DemoSDK/Version.swift"
-        }
-      ]
-    },
-    "Integrations/Sprig": {
-      "component": "integration-sprig",
-      "package-name": "DemoSprig",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "Sources/DemoSprig/Version.swift"
-        }
-      ]
-    },
-    "Integrations/Firebase": {
-      "component": "integration-firebase",
-      "package-name": "DemoFirebase",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "Sources/DemoFirebase/Version.swift"
-        }
-      ]
-    }
-  }
+  "packages": {}
 }

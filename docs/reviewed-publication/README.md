@@ -19,11 +19,9 @@ The normal Actions token remains Contents read. Production repositories are outs
 10. Create the public GitHub Release.
 11. Test an anonymous customer upgrade with SwiftPM and an iOS simulator build.
 
-Step 7 runs automatically on a 15-minute schedule. A manual dispatch can complete publication sooner.
-GitHub can delay scheduled jobs, and schedules operate only from the default branch.
-See [GitHub schedule behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
+Step 7 is manual: run the completion workflow after merging a publication PR. The 15-minute schedule was removed on 2026-10-08 because it failed on every run.
 The source workflow holds the credentials. Publication repositories need no relay workflow or secrets.
-This central schedule replaces the proposed per-repository merge-event relay.
+This central workflow replaces the proposed per-repository merge-event relay.
 
 Source component releases are durable release intent. The completion workflow discovers incomplete publication from these releases.
 It does not require transient Release Please action outputs, a PR comment, or a new source change.
@@ -50,7 +48,7 @@ The publisher never force-pushes a publication branch or rewrites a version tag.
 | State | Meaning | Recovery |
 | --- | --- | --- |
 | `awaiting_review` | Valid generated PR exists; no tag is created | Review and merge; completion runs later |
-| `awaiting_dependency` | Required SDK tag is unavailable | Complete SDK publication; retry on the schedule |
+| `awaiting_dependency` | Required SDK tag is unavailable | Complete SDK publication; run the completion workflow again |
 | `published` | Served version tag and public Release are verified | No further publication write |
 | `incomplete` | Build, verification, API, or publication failed | Inspect evidence; retry the original source SHA and version |
 

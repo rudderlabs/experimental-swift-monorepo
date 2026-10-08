@@ -74,7 +74,7 @@ def ensure_release(key, version, sha, provenance, mirror_root):
 
 
 def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
-    if key not in NAMES or inventory(root)[key]["repository"] != NAMES[key]:
+    if key not in NAMES or inventory(root).get(key, {}).get("repository") != NAMES[key]:
         raise ValueError("Destination is outside the fixed experimental inventory")
     if mirror_root:
         mirror_root = mirror_root.resolve()

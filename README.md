@@ -2,6 +2,8 @@
 
 Local preparation for [SDK-5388](https://linear.app/rudderstack/issue/SDK-5388), under [SDK-5384](https://linear.app/rudderstack/issue/SDK-5384).
 This repository contains representative demo code, not imported production SDK code.
+
+**Status (2026-10-08):** the demo packages moved to `Tests/Fixtures/demo/` and are now test data only. The root has no packages until the real SDK, Sprig and Firebase are imported. Releases are paused (`EXPERIMENTAL_RELEASES_ENABLED=false`) and completion is manual (no schedule). The `.lab` rehearsal below targets the old demo layout and is rewritten in a later step.
 The original one-integration prototype remains at `/Users/denis/git/swift-monorepo-example`.
 
 Dependency-management preparation (2026-09-22): [staged configuration and acceptance procedure](docs/dependency-management/README.md). The YAML template is dormant outside `.github`; dependency authority/release-marker checks are now implemented; hosted graph/updater validation remains pending. See the [acceptance commands and gates](docs/dependency-management/ACCEPTANCE.md). Activate only when the monorepo experiment resumes.
@@ -25,7 +27,7 @@ The consumer template must be a sibling checkout named `experimental-swift-examp
 A network connection is needed for the public Swift Collections dependency.
 
 ```sh
-swift test
+python3 -m unittest discover -s Tests -p 'test_*.py'
 python3 scripts/release_plan.py sync-shared --check
 python3 scripts/rehearse.py --ios
 ```
@@ -43,10 +45,7 @@ The generated package manifests retain the planned public URLs.
 
 | Path | Role |
 | --- | --- |
-| `Packages/DemoSDK` | SDK fixture, independent version, resources, privacy manifest |
-| `Integrations/Sprig` | First integration fixture |
-| `Integrations/Firebase` | Second integration fixture with public Swift Collections dependency |
-| `Shared/DemoShared` | Source copied into each generated integration module |
+| `Tests/Fixtures/demo` | Demo SDK, Sprig, Firebase and shared code, used as test data only |
 | `release/packages.json` | Fixed publication destinations and dependency policies |
 | `scripts/project.py` | Graph inspection and deterministic standalone export |
 | `scripts/publish.py` | Build validation, immutable tag publication, drift check, recovery |
@@ -57,7 +56,7 @@ The generated package manifests retain the planned public URLs.
 ## Developer path
 
 1. Change canonical source in this repository.
-2. Run `swift test`.
+2. Run the Python tests (`python3 -m unittest discover -s Tests -p 'test_*.py'`).
 3. If shared source changes, run `python3 scripts/release_plan.py sync-shared`.
 4. Include the changed marker files in the same `fix:` or `feat:` commit.
 5. Review the affected integration paths in the commit.

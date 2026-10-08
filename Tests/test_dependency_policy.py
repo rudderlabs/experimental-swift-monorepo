@@ -1,4 +1,5 @@
 """Release regressions against real Swift manifest parsing and Git baselines."""
+import os
 import json
 from pathlib import Path
 import shutil
@@ -6,11 +7,17 @@ import sys
 import tempfile
 import unittest
 
+os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # ignore personal git settings such as tag.gpgsign
+os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from common import ROOT, commit, git, inventory, run, write_json
 from dependency_policy import markers, sync_inventory
 from project import export
 from release_plan import affected
+
+
+FIXTURE = ROOT / "Tests" / "Fixtures" / "demo"  # demo packages are test data only
 
 
 class DependencyPolicyTests(unittest.TestCase):
@@ -21,7 +28,7 @@ class DependencyPolicyTests(unittest.TestCase):
         self.root.mkdir()
         for name in ["Package.swift", "release", "Packages", "Integrations", "Shared",
                      ".release-please-manifest.json", "scripts"]:
-            path = ROOT / name
+            path = (ROOT if name == "scripts" else FIXTURE) / name
             if path.is_dir():
                 shutil.copytree(path, self.root / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
             else:
