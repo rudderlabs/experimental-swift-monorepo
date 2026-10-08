@@ -10,7 +10,7 @@ A normal source merge may update a Release Please PR. It must not change generat
 
 Source component tags and GitHub releases are internal release intent. They do not prove a customer package was published. The customer package becomes available to version-based SwiftPM consumers when its plain semantic version tag is served by the package repository. GitHub release metadata follows that tag; an error after tag creation cannot be described as no publication.
 
-The publisher uses the approved source commit SHA, not the latest source `main`. The workflow checks out current tooling separately from the approved source snapshot so older approved commits remain retryable. Publication succeeds only after build validation, served-tag verification, and matching release metadata. Existing version tags never move.
+The publisher uses the approved source commit SHA, not the latest source `main`. The workflow checks out current tooling separately from the approved source snapshot so older approved commits remain retryable. Publication succeeds only after build validation (`swift build` plus an `xcodebuild` build for every platform the package declares), served-tag verification, and matching release metadata. Existing version tags never move.
 
 The workflow reports `no_release`, `published`, or `incomplete`. Every requested package must return matching package, version, source SHA, served tag, and publication SHA for batch status `published`. Failed, cancelled, skipped, missing, or mismatched package jobs produce `incomplete`. A partial batch preserves successfully published packages. Inspect actual refs before retrying incomplete jobs; a failed job may already have published a tag.
 
