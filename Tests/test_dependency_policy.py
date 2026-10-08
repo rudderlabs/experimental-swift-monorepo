@@ -54,12 +54,13 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertEqual(sync_inventory(self.root), ["firebase"])
         self.assertEqual(sync_inventory(self.root), [])
         self.assertEqual(markers(self.root, check=True), [])
-        self.assertEqual(inventory(self.root)["firebase"]["vendors"][0]["version"], "1.1.5")
+        self.assertEqual(inventory(self.root)["firebase"]["vendors"][0]["requirement"],
+                         {"kind": "exact", "lower": "1.1.5", "upper": None})
 
     def test_missing_reviewed_marker_blocks_publication(self):
         self.update_vendor()
         config = json.loads((self.root / "release/packages.json").read_text())
-        config["packages"]["firebase"]["vendors"][0]["version"] = "1.1.5"
+        config["packages"]["firebase"]["vendors"][0]["requirement"]["lower"] = "1.1.5"
         write_json(self.root / "release/packages.json", config)
         with self.assertRaisesRegex(ValueError, "reviewed release markers: firebase"):
             markers(self.root, check=True)
@@ -93,10 +94,10 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertEqual(affected(["Package.swift"], self.root), ["sprig", "firebase"])
         self.assertEqual(sync_inventory(self.root), ["sprig", "firebase"])
 
-    def test_unsupported_range_fails_explicitly(self):
+    def test_unsupported_revision_fails_explicitly(self):
         path = self.root / "Package.swift"
-        path.write_text(path.read_text().replace('exact: "1.1.4"', 'from: "1.1.4"'))
-        with self.assertRaisesRegex(ValueError, "exact public Git"):
+        path.write_text(path.read_text().replace('exact: "1.1.4"', 'revision: "' + "a" * 40 + '"'))
+        with self.assertRaisesRegex(ValueError, "Unsupported vendor requirement revision for swift-collections"):
             sync_inventory(self.root)
 
     def test_documented_cli_accepts_base_option_before_changed_paths(self):

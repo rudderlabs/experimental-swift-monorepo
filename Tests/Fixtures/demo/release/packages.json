@@ -10,7 +10,12 @@
       "resources": [
         "PrivacyInfo.xcprivacy",
         "Fixture.json"
-      ]
+      ],
+      "platforms": [
+        "iOS 15",
+        "macOS 12"
+      ],
+      "toolsVersion": "5.9"
     },
     "sprig": {
       "path": "Integrations/Sprig",
@@ -26,7 +31,12 @@
           "mode": "vendor"
         }
       },
-      "sdkMinimum": "0.1.0"
+      "sdkMinimum": "0.1.0",
+      "platforms": [
+        "iOS 15",
+        "macOS 12"
+      ],
+      "toolsVersion": "5.9"
     },
     "firebase": {
       "path": "Integrations/Firebase",
@@ -50,10 +60,19 @@
         {
           "url": "https://github.com/apple/swift-collections.git",
           "identity": "swift-collections",
-          "version": "1.1.4",
-          "product": "OrderedCollections"
+          "product": "OrderedCollections",
+          "requirement": {
+            "kind": "exact",
+            "lower": "1.1.4",
+            "upper": null
+          }
         }
-      ]
+      ],
+      "platforms": [
+        "iOS 15",
+        "macOS 12"
+      ],
+      "toolsVersion": "5.9"
     }
   }
 }
