@@ -11,10 +11,10 @@ os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # ignore personal git settings suc
 os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from common import ROOT, commit, git, inventory, run, write_json
+from common import ROOT, commit, git, inventory, load, run, write_json
 from dependency_policy import markers, sync_inventory
 from project import export
-from release_plan import affected
+from release_plan import affected, shared_markers
 
 
 FIXTURE = ROOT / "Tests" / "Fixtures" / "demo"  # demo packages are test data only
@@ -54,12 +54,13 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertEqual(sync_inventory(self.root), ["firebase"])
         self.assertEqual(sync_inventory(self.root), [])
         self.assertEqual(markers(self.root, check=True), [])
-        self.assertEqual(inventory(self.root)["firebase"]["vendors"][0]["version"], "1.1.5")
+        self.assertEqual(inventory(self.root)["firebase"]["vendors"][0]["requirement"],
+                         {"kind": "exact", "lower": "1.1.5", "upper": None})
 
     def test_missing_reviewed_marker_blocks_publication(self):
         self.update_vendor()
         config = json.loads((self.root / "release/packages.json").read_text())
-        config["packages"]["firebase"]["vendors"][0]["version"] = "1.1.5"
+        config["packages"]["firebase"]["vendors"][0]["requirement"]["lower"] = "1.1.5"
         write_json(self.root / "release/packages.json", config)
         with self.assertRaisesRegex(ValueError, "reviewed release markers: firebase"):
             markers(self.root, check=True)
@@ -93,10 +94,56 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertEqual(affected(["Package.swift"], self.root), ["sprig", "firebase"])
         self.assertEqual(sync_inventory(self.root), ["sprig", "firebase"])
 
-    def test_unsupported_range_fails_explicitly(self):
+    def test_export_vendors_package_level_shared_code_and_rejects_public(self):
+        (self.root / ".gitignore").write_text(".build/\n.swiftpm/\n")
+        (self.root / "LICENSE").write_text("MIT\n")
+        commit(self.root, "test: exportable fixture")
+        output = self.root.parent / "export"
+        export("firebase", "0.1.0", output, self.root)
+        sources = output / "Sources/DemoFirebase"
+        self.assertIn("package enum DemoNormalizer", (sources / "Vendored/DemoShared/DemoNormalizer.swift").read_text())
+        self.assertEqual((sources / "DemoFirebase.swift").read_text().splitlines()[:2],
+                         ["import DemoSDK", "import OrderedCollections"])
+        shared = self.root / "Shared/DemoShared/DemoNormalizer.swift"
+        shared.write_text(shared.read_text().replace("package enum", "public enum"))
+        commit(self.root, "test: widen shared access")
+        with self.assertRaisesRegex(ValueError, "package access, not public/open: DemoNormalizer.swift"):
+            export("firebase", "0.1.0", self.root.parent / "export-public", self.root)
+
+    def test_fixture_shared_markers_are_current(self):
+        self.assertEqual(shared_markers(self.root, check=True), [])
+
+    def test_shared_change_selects_only_integrations_vendoring_that_target(self):
+        other = self.root / "Shared/DemoFormat/DemoFormat.swift"
+        other.parent.mkdir(parents=True)
+        other.write_text('package enum DemoFormat {\n    package static let separator = " "\n}\n')
         path = self.root / "Package.swift"
-        path.write_text(path.read_text().replace('exact: "1.1.4"', 'from: "1.1.4"'))
-        with self.assertRaisesRegex(ValueError, "exact public Git"):
+        path.write_text(path.read_text().replace(
+            '.target(name: "DemoShared", path: "Shared/DemoShared"),',
+            '.target(name: "DemoShared", path: "Shared/DemoShared"),\n'
+            '        .target(name: "DemoFormat", path: "Shared/DemoFormat"),').replace(
+            '["DemoSDK", "DemoShared",\n', '["DemoSDK", "DemoShared", "DemoFormat",\n'))
+        self.assertIn('"DemoShared", "DemoFormat",', path.read_text())
+        config = load(self.root / "release/packages.json")
+        config["packages"]["firebase"]["policies"]["DemoFormat"] = {"mode": "vendor"}
+        write_json(self.root / "release/packages.json", config)
+        self.assertEqual(shared_markers(self.root), ["firebase"])
+        self.assertEqual(list(load(self.root / "Integrations/Sprig/shared-source.json")),
+                         ["Shared/DemoShared/DemoNormalizer.swift"])
+        self.assertEqual(sorted(load(self.root / "Integrations/Firebase/shared-source.json")),
+                         ["Shared/DemoFormat/DemoFormat.swift", "Shared/DemoShared/DemoNormalizer.swift"])
+        other.write_text(other.read_text().replace('" "', '"-"'))
+        self.assertEqual(affected(["Shared/DemoFormat/DemoFormat.swift"], self.root), ["firebase"])
+        with self.assertRaisesRegex(ValueError, "sync-shared .*: firebase$"):
+            shared_markers(self.root, check=True)
+        self.assertEqual(shared_markers(self.root), ["firebase"])
+        self.assertEqual(affected(["Shared/DemoShared/DemoNormalizer.swift"], self.root), ["sprig", "firebase"])
+        self.assertEqual(affected(["Shared/README.md"], self.root), [])
+
+    def test_unsupported_revision_fails_explicitly(self):
+        path = self.root / "Package.swift"
+        path.write_text(path.read_text().replace('exact: "1.1.4"', 'revision: "' + "a" * 40 + '"'))
+        with self.assertRaisesRegex(ValueError, "Unsupported vendor requirement revision for swift-collections"):
             sync_inventory(self.root)
 
     def test_documented_cli_accepts_base_option_before_changed_paths(self):

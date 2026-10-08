@@ -22,7 +22,7 @@ python3 scripts/release_plan.py affected --base-ref HEAD Package.swift
 
 Include the changed inventory and package markers in the reviewed `fix:` commit. For an already committed change, choose the pre-change commit with `--base-ref`. Review the resulting Release Please PR; local selection is not real Release Please evidence. If `sdkMinimum` changes, run sync and review the coordinated SDK/integration release requirements.
 
-The exact-Git fixture rejects unsupported ranges. Lock-only changes do not automatically release a product. Do not edit generated publication manifests as remediation.
+The checks reject branch and revision vendor requirements. Lock-only changes do not automatically release a product. Do not edit generated publication manifests as remediation.
 
 After provisioning, collect read-only native monitoring evidence:
 

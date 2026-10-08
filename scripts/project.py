@@ -6,14 +6,80 @@ import re
 import shutil
 
 from common import ROOT, anonymous_env, file_hashes, git, inventory, load, run, url, write_json
-from dependency_policy import markers as dependency_markers
+from dependency_policy import manifest, markers as dependency_markers
 
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
+PLATFORM = re.compile(r"(iOS|macOS|macCatalyst|tvOS|watchOS|visionOS) ([1-9][0-9]*)(?:\.([0-9]+))?\Z")
+TOOLS = re.compile(r"[1-9][0-9]*\.[0-9]+(?:\.[0-9]+)?\Z")
+RESOURCE_RULES = ({"process": {}}, {"copy": {}})
+LEXEME = re.compile(r'//[^\n]*|/\*|(#*)("""|")')
+BLOCK = re.compile(r"/\*|\*/")
+# `open` is contextual, so it counts only before another modifier or a declaration keyword.
+WIDE_ACCESS = re.compile(r"(?<![\w`.])(?:public\b|open(?:\s*\(set\))?(?=\s+(?:@|(?:class|func|var|let|subscript|"
+                         r"static|final|override|required|convenience|dynamic|lazy|weak|unowned|nonisolated|"
+                         r"public|open|package|internal)\b)))")
+IMPORT_KIND = r"(?:(?:typealias|struct|class|enum|protocol|let|var|func)[ \t]+)?"
+
+
+def code_only(text):
+    """Blank comments and string literals, keeping line numbers."""
+    parts, i = [], 0
+    while match := LEXEME.search(text, i):
+        parts.append(text[i:match.start()])
+        if match[0] == "/*":
+            depth, end = 1, match.end()
+            while depth and (inner := BLOCK.search(text, end)):
+                depth, end = depth + (1 if inner[0] == "/*" else -1), inner.end()
+            end = len(text) if depth else end
+        elif match[0].startswith("//"):
+            end = match.end()
+        else:
+            hashes, quote = match[1], match[2]
+            close = re.compile(rf"(?:\\{hashes}[\s\S]|[\s\S])*?{quote}{hashes}").match(text, match.end())
+            end = close.end() if close else len(text)
+        parts.append(re.sub(r"[^\n]", " ", text[match.start():end]))
+        i = end
+    return "".join(parts) + text[i:]
+
+
+def wide_access(text):
+    """Line numbers of `public`/`open` modifiers outside comments and strings."""
+    code = code_only(text)
+    return [code.count("\n", 0, m.start()) + 1 for m in WIDE_ACCESS.finditer(code)]
+
+
+def strip_imports(content, modules):
+    """Drop imports of vendored modules, whatever their attributes, kind, or line ending."""
+    for module in modules:
+        content = re.sub(rf"^[ \t]*(?:@\w+(?:\([^)\r\n]*\))?[ \t]+)*(?:(?:public|package|internal)[ \t]+)?"
+                         rf"import[ \t]+{IMPORT_KIND}{re.escape(module)}(?:\.[\w.]+)?[ \t]*(?://[^\r\n]*)?"
+                         r"(?:\r?\n|\Z)", "", content, flags=re.M)
+    return content
 
 
 def graph(root):
     data = json.loads(run(["swift", "package", "describe", "--type", "json"], cwd=root, env=anonymous_env()))
     return {t["name"]: t for t in data["targets"]}
+
+
+def platforms(package):
+    """Render the package's own `platforms` and `toolsVersion`; the root manifest is never copied."""
+    values, tools = package.get("platforms", []), package.get("toolsVersion", "")
+    matches = [PLATFORM.fullmatch(value) for value in values]
+    if not values or not all(matches) or not TOOLS.fullmatch(tools):
+        raise ValueError("Each package needs explicit platforms (e.g. \"iOS 15\") and toolsVersion (e.g. \"5.9\")")
+    if len({m[1] for m in matches}) != len(matches):
+        raise ValueError("Duplicate platform in package inventory")
+    return tools, [f".{m[1]}(.v{m[2]}{'_' + m[3] if m[3] and m[3] != '0' else ''})" for m in matches]
+
+
+def requirement(value):
+    kind, lower, upper = value["kind"], value["lower"], value["upper"]
+    forms = {"exact": f'exact: "{lower}"', "upToNextMajor": f'.upToNextMajor(from: "{lower}")',
+             "upToNextMinor": f'.upToNextMinor(from: "{lower}")', "range": f'"{lower}"..<"{upper}"'}
+    if kind not in forms:
+        raise ValueError(f"Unsupported vendor requirement kind: {kind}")
+    return forms[kind]
 
 
 def closure(name, targets, policies):
@@ -51,12 +117,15 @@ def export(key, version, destination, root=ROOT):
     constants = (root / package["path"] / "Sources" / package["target"] / "Version.swift").read_text()
     if f'current = "{version}"' not in constants:
         raise ValueError("Swift runtime version differs from release intent")
-    dependency_markers(root, check=True)
+    tools, platform_args = platforms(package)
+    data = manifest(root)
+    dependency_markers(root, check=True, data=data)
     if git(root, "status", "--porcelain"):
         raise ValueError("Commit the source before exporting an auditable release")
     if destination.exists() and any(destination.iterdir()):
         raise ValueError("Export destination must be empty")
     targets = graph(root)
+    declared_targets = {t["name"]: t for t in data["targets"]}
     target = package["target"]
     policies = package["policies"]
     selected = closure(target, targets, policies)
@@ -86,43 +155,55 @@ def export(key, version, destination, root=ROOT):
             if name != target:
                 output /= Path("Vendored") / name
             output /= relative
-            content = source.read_text()
-            for shared in selected:
-                if policies.get(shared, {}).get("mode") == "vendor":
-                    content = re.sub(rf"^import {re.escape(shared)}\n", "", content, flags=re.M)
-            # Shared declarations have module-local visibility. Each integration owns its copy.
+            content = source.read_bytes().decode()
+            if name != target and wide_access(content):
+                raise ValueError(f"Vendored code must use package access, not public/open: {relative}")
+            content = strip_imports(content, [n for n in selected if policies.get(n, {}).get("mode") == "vendor"])
+            # Shared declarations use `package` access. Each integration owns its copy.
             (destination / output).parent.mkdir(parents=True, exist_ok=True)
-            (destination / output).write_text(content)
+            (destination / output).write_bytes(content.encode())
             copied.append({"source": source.relative_to(root).as_posix(), "output": output.as_posix()})
         if name == target:
-            declared = package.get("resources", [])
-            actual = sorted(Path(r["path"]).name for r in entry.get("resources", []))
-            if sorted(Path(r).name for r in declared) != actual:
+            # Rules and folder paths come from dump-package; describe expands folders into files.
+            rules = {Path(r["path"]).as_posix(): r["rule"] for r in declared_targets[name].get("resources") or []}
+            declared = [Path(r).as_posix() for r in package.get("resources", [])]
+            if sorted(declared) != sorted(rules):
                 raise ValueError("Resources differ from the explicit export inventory")
+            base = root / entry["path"]
             for relative in declared:
-                source = root / entry["path"] / relative
-                output = Path("Sources") / target / relative
-                (destination / output).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, destination / output)
-                resources.append(f'.copy("{relative}")')
-                copied.append({"source": source.relative_to(root).as_posix(), "output": output.as_posix()})
+                if rules[relative] not in RESOURCE_RULES:
+                    raise ValueError(f"Unsupported resource rule: {relative}")
+                source = base / relative
+                if not source.resolve().is_relative_to(base.resolve()):
+                    raise ValueError("Unsupported or escaping resource path")
+                # A folder resource is copied file by file so provenance lists every output.
+                for item in sorted(p for p in source.rglob("*") if p.is_file()) if source.is_dir() else [source]:
+                    output = Path("Sources") / target / item.relative_to(base)
+                    (destination / output).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(item, destination / output)
+                    copied.append({"source": item.relative_to(root).as_posix(), "output": output.as_posix()})
+                resources.append(f'.{next(iter(rules[relative]))}("{relative}")')
+    # One package line per vendor identity; its products share that requirement.
+    vendors = {}
     for vendor in package.get("vendors", []):
-        external.append(f'.package(url: "{vendor["url"]}", exact: "{vendor["version"]}")')
-        target_deps.append(f'.product(name: "{vendor["product"]}", package: "{vendor["identity"]}")')
+        vendors.setdefault(vendor["identity"], []).append(vendor)
+    for identity, products in sorted(vendors.items()):
+        external.append(f'.package(url: "{products[0]["url"]}", {requirement(products[0]["requirement"])})')
+        target_deps += [f'.product(name: "{v["product"]}", package: "{identity}")' for v in products]
     resource_arg = ", resources: [" + ", ".join(resources) + "]" if resources else ""
-    manifest = f'''// swift-tools-version: 5.9
+    text = f'''// swift-tools-version: {tools}
 import PackageDescription
 let package = Package(
     name: "{target}",
-    platforms: [.iOS(.v15), .macOS(.v12)],
+    platforms: [{", ".join(platform_args)}],
     products: [.library(name: "{target}", targets: ["{target}"])],
     dependencies: [{", ".join(external)}],
     targets: [.target(name: "{target}", dependencies: [{", ".join(target_deps)}]{resource_arg})]
 )
 '''
-    if '.package(path:' in manifest or "experimental-swift-monorepo" in manifest:
+    if '.package(path:' in text or "experimental-swift-monorepo" in text:
         raise ValueError("Generated package depends on private source")
-    (destination / "Package.swift").write_text(manifest)
+    (destination / "Package.swift").write_text(text)
     for name in ("README.md", "CHANGELOG.md"):
         shutil.copyfile(root / package["path"] / name, destination / name)
     shutil.copyfile(root / "LICENSE", destination / "LICENSE")

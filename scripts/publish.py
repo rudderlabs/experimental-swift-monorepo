@@ -13,6 +13,9 @@ from common import (ROOT, NAMES, OWNER, RELEASE_BRANCH, anonymous_env, commit, f
 from project import export
 from reviewed_publication import reviewed_commit
 
+DESTINATIONS = {"iOS": "iOS", "macOS": "macOS", "macCatalyst": "macOS,variant=Mac Catalyst",
+                "tvOS": "tvOS", "watchOS": "watchOS", "visionOS": "visionOS"}
+
 
 @contextlib.contextmanager
 def publication_lock(mirror_root, key):
@@ -40,9 +43,23 @@ def tag_exists(repo, version):
     return f"refs/tags/{version}" in git(repo, "for-each-ref", "--format=%(refname)", "refs/tags").splitlines()
 
 
-def validate(stage, state, mirror_root):
+def platform_builds(stage, package, state):
+    # PR CI builds only the iOS Simulator. Generic device destinations need no simulator runtime or signing.
+    for platform in package["platforms"]:
+        destination = "generic/platform=" + DESTINATIONS[platform.split()[0]]
+        try:
+            run(["xcodebuild", "build", "-quiet", "-scheme", package["target"], "-destination", destination,
+                 "-scmProvider", "system", "-disablePackageRepositoryCache",
+                 "-clonedSourcePackagesDirPath", state / "xcode-packages", "-packageCachePath", state / "xcode-cache",
+                 "-derivedDataPath", state / "xcode-build", "CODE_SIGNING_ALLOWED=NO"], cwd=stage, env=anonymous_env())
+        except RuntimeError as error:
+            raise RuntimeError(f"Release build failed for {platform} ({destination})\n{error}") from error
+
+
+def validate(stage, state, mirror_root, package):
     mirrors(stage, mirror_root)
     output = run(["swift", "build", *swift_options(state)], cwd=stage, env=anonymous_env())
+    platform_builds(stage, package, state)
     # SwiftPM configuration and the resolved file must never enter the publication tree.
     shutil.rmtree(stage / ".swiftpm", ignore_errors=True)
     (stage / "Package.resolved").unlink(missing_ok=True)
@@ -93,6 +110,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
         temp = Path(temp)
         stage, repo = temp / "export", temp / "publication"
         expected = export(key, version, stage, root)
+        package = inventory(root)[key]
         run(["git", "clone", "--no-checkout", remote, repo])
         existing = tag_exists(repo, version)
         publication_ref = f"refs/remotes/origin/{RELEASE_BRANCH}"
@@ -109,7 +127,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
             sha = git(repo, "rev-parse", "HEAD")
             if mirror_root is None:
                 git(repo, "merge-base", "--is-ancestor", sha, "origin/main")
-            validate(stage, temp / "validation", mirror_root)
+            validate(stage, temp / "validation", mirror_root, package)
         elif mirror_root is None:
             if not has_branch:
                 raise ValueError("Reviewed publication requires a seeded main branch")
@@ -118,7 +136,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
             if minimum and not run(["git", "ls-remote", url("sdk"), f"refs/tags/{minimum}"]):
                 return {"status": "awaiting_dependency", "package": key, "version": version,
                         "sourceCommit": expected["sourceCommit"], "dependency": "sdk", "minimum": minimum}
-            validate(stage, temp / "validation", mirror_root)
+            validate(stage, temp / "validation", mirror_root, package)
             sha, pr = reviewed_commit(key, version, repo, stage, expected, verify_tree)
             if sha is None:
                 return {"status": "awaiting_review", "package": key, "version": version,
@@ -129,7 +147,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
             git(repo, "tag", version, sha)
             git(repo, "push", "origin", f"refs/tags/{version}")
         else:
-            validate(stage, temp / "validation", mirror_root)
+            validate(stage, temp / "validation", mirror_root, package)
             if has_branch and load(repo / ".publication.json") == expected:
                 # Recover after the generated publication commit was pushed without its tag.
                 sha = git(repo, "rev-parse", "HEAD")

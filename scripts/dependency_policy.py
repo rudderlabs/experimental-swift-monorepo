@@ -1,16 +1,34 @@
 """Validate canonical vendor requirements and reviewed per-package release markers.
 
-This fixture supports exact Git vendor requirements only. Other requirement
-shapes fail explicitly; production range/binary coverage is a separate gate.
+Git vendor requirements are exact, upToNextMajor (`from:`), upToNextMinor, or a
+version range. Branch and revision requirements are not releasable and fail
+explicitly; binary/registry coverage is a separate gate.
 """
 import argparse
 import json
+import re
 
 from common import ROOT, inventory, run, write_json
 
 
 def manifest(root=ROOT):
     return json.loads(run(["swift", "package", "dump-package"], cwd=root))
+
+
+def requirement(identity, value):
+    """Map SwiftPM's parsed requirement to {kind, lower, upper}; `from:` parses as a range."""
+    if len(value.get("exact", [])) == 1:
+        return {"kind": "exact", "lower": value["exact"][0], "upper": None}
+    if len(value.get("range", [])) == 1:
+        lower, upper = value["range"][0]["lowerBound"], value["range"][0]["upperBound"]
+        kind = "range"
+        match = re.fullmatch(r"(\d+)\.(\d+)\.\d+", lower)
+        if match:
+            major, minor = map(int, match.groups())
+            kind = {f"{major + 1}.0.0": "upToNextMajor", f"{major}.{minor + 1}.0": "upToNextMinor"}.get(upper, kind)
+        return {"kind": kind, "lower": lower, "upper": upper}
+    raise ValueError(f"Unsupported vendor requirement {'/'.join(sorted(value))} for {identity}: "
+                     "use exact, from/upToNextMajor, upToNextMinor, or a version range")
 
 
 def requirements(data):
@@ -20,14 +38,14 @@ def requirements(data):
         if len(sources) != 1:
             raise ValueError("The fixture supports Git vendor dependencies only")
         source = sources[0]
-        exact = source["requirement"].get("exact", [])
         remote = source["location"].get("remote", [])
-        if len(exact) != 1 or len(remote) != 1:
-            raise ValueError("The fixture supports exact public Git vendor requirements only")
+        if len(remote) != 1:
+            raise ValueError("The fixture supports public Git vendor requirements only")
         identity = source["identity"]
         if identity in result:
             raise ValueError("Duplicate canonical vendor identity")
-        result[identity] = {"url": remote[0]["urlString"], "version": exact[0]}
+        result[identity] = {"url": remote[0]["urlString"],
+                            "requirement": requirement(identity, source["requirement"])}
     return result
 
 
@@ -36,6 +54,9 @@ def package_requirements(data, packages):
     targets = {target["name"]: target for target in data["targets"]}
     result = {}
     for key, package in packages.items():
+        external = [name for name, policy in package.get("policies", {}).items() if policy.get("mode") == "external"]
+        if external and not package.get("sdkMinimum"):
+            raise ValueError(f"{key}: external policy {external[0]} requires sdkMinimum in release/packages.json")
         products = {}
         visited = set()
 
@@ -58,7 +79,7 @@ def package_requirements(data, packages):
                         visit(target[0])
 
         visit(package["target"])
-        result[key] = {"schemaVersion": 1,
+        result[key] = {"schemaVersion": 2,
                        "vendors": [products[p] for p in sorted(products)],
                        "sdkMinimum": package.get("sdkMinimum")}
     return result

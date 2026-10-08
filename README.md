@@ -66,8 +66,17 @@ Shared markers contain source hashes under each affected package path.
 Release Please sees these path changes in the reviewed feature or fix commit.
 CI rejects stale markers. No extra post-processing commit is added to a Release Please branch.
 SDK-only work does not modify integration markers.
+Each marker lists only the files of the shared targets that package vendors, so a change to one shared target selects only its vendoring integrations.
+Shared code uses Swift's `package` access level, never `public` or `open`. `sync-shared` (and CI's `--check`) rejects a `public`/`open` declaration under `Shared/`, and export rejects it in vendored code.
+Export removes imports of vendored modules (including `@_exported`/`@testable` and `import struct Module.Type` forms); each integration then owns a private copy, so two integrations in one app never collide.
+`RUN_SWIFT_BUILD_TESTS=1` additionally builds two exported integrations and a consumer of both (offline, about 15 seconds; CI sets it).
 The SDK minimum requirement is explicit in each integration's inventory entry.
 Update that requirement in a coordinated release when an integration needs a new SDK API.
+Export fails if a package has an `external` policy but no `sdkMinimum`.
+Each inventory entry also sets its own `platforms` (for example `["iOS 15"]`) and `toolsVersion` (for example `"5.9"`).
+The generated manifest uses exactly those, never the root manifest's values.
+Before any publication write, the publisher builds the exported package with `xcodebuild` for every declared platform (generic device destinations, unsigned, anonymous, temporary caches). PR CI builds only the iOS Simulator.
+Resources keep their `process` or `copy` rule from `swift package dump-package`. Folder resources are copied whole and listed by relative path in the inventory.
 
 ## Maintainer path
 
@@ -100,6 +109,6 @@ Review the generated manifests and `Package.resolved` before committing a public
 - GitHub concurrency behavior and retained Actions artifacts.
 - Archival, credential revocation, and final old-version resolution.
 
-The fixtures cover Swift source, explicit resources, and a source-based external vendor product.
+The fixtures cover Swift source, explicit file and folder resources, per-package platforms, and source-based external vendor products.
 They do not prove the real Firebase/Sprig binaries, the core SDK's complete resources, or all production platforms.
 SDK-5385, SDK-5386, and SDK-5387 remain dependent on the remote proof.
