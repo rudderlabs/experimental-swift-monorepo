@@ -75,6 +75,8 @@ def check_inventory(expected, packages):
 
 def markers(root=ROOT, check=False, data=None):
     packages = inventory(root)
+    if not packages:
+        return []
     expected = package_requirements(data or manifest(root), packages)
     check_inventory(expected, packages)
     changed = []
@@ -93,6 +95,8 @@ def sync_inventory(root=ROOT):
     """Copy canonical requirements into export metadata; never change Package.swift."""
     path = root / "release/packages.json"
     config = json.loads(path.read_text())
+    if not inventory(root):
+        return []
     data = manifest(root)
     expected = package_requirements(data, inventory(root))
     for key, value in expected.items():

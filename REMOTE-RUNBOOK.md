@@ -94,7 +94,7 @@ Use disposable refs for destructive failure tests. Preserve protected branches a
 14. Attempt an update and deletion of a disposable tag under the configured ruleset.
 15. Confirm the publisher App cannot address production repositories.
 
-A workflow rerun may have no new Release Please outputs. The completion workflow discovers pending source releases every 15 minutes. Manual publisher dispatch with the original SHA and version is also available.
+A workflow rerun may have no new Release Please outputs. The completion workflow is manual: run it after merging a publication PR. Manual publisher dispatch with the original SHA and version is also available.
 Never move an existing version tag. Keep drift failures for inspection; repair through a reviewed incident decision.
 The three repositories are not one transaction. A completed SDK release can remain available if an integration later fails.
 The repair path publishes the remaining integration from the same approved source.

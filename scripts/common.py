@@ -53,7 +53,7 @@ def url(key):
 
 def inventory(root=ROOT):
     packages = load(root / "release/packages.json")["packages"]
-    return {key: packages[key] for key in NAMES}
+    return {key: packages[key] for key in NAMES if key in packages}
 
 
 def file_hashes(root):
