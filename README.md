@@ -66,6 +66,10 @@ Shared markers contain source hashes under each affected package path.
 Release Please sees these path changes in the reviewed feature or fix commit.
 CI rejects stale markers. No extra post-processing commit is added to a Release Please branch.
 SDK-only work does not modify integration markers.
+Each marker lists only the files of the shared targets that package vendors, so a change to one shared target selects only its vendoring integrations.
+Shared code uses Swift's `package` access level, never `public` or `open`. `sync-shared` (and CI's `--check`) rejects a `public`/`open` declaration under `Shared/`, and export rejects it in vendored code.
+Export removes imports of vendored modules (including `@_exported`/`@testable` and `import struct Module.Type` forms); each integration then owns a private copy, so two integrations in one app never collide.
+`RUN_SWIFT_BUILD_TESTS=1` additionally builds two exported integrations and a consumer of both (offline, about 15 seconds; CI sets it).
 The SDK minimum requirement is explicit in each integration's inventory entry.
 Update that requirement in a coordinated release when an integration needs a new SDK API.
 Export fails if a package has an `external` policy but no `sdkMinimum`.

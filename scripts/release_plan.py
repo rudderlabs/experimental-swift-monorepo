@@ -3,20 +3,43 @@ import argparse
 import hashlib
 import json
 import os
+from pathlib import Path
 
 from common import ROOT, git, inventory, load, write_json
-from project import SEMVER
+from project import SEMVER, wide_access
 from dependency_policy import package_requirements, manifest
 
 
+def shared_access(root=ROOT):
+    """Shared code is vendored into several public packages, so it must not widen past `package`."""
+    found = [f"{p.relative_to(root).as_posix()}:{line}" for p in sorted((root / "Shared").rglob("*.swift"))
+             for line in wide_access(p.read_bytes().decode())]
+    if found:
+        raise ValueError("Shared code must use `package` access, not public/open: " + ", ".join(found))
+
+
+def vendored(packages, root=ROOT, data=None):
+    """Source directory of each vendored target per package, from the parsed manifest."""
+    names = {key: [n for n, p in package["policies"].items() if p["mode"] == "vendor"]
+             for key, package in packages.items()}
+    if not any(names.values()):
+        return names
+    targets = {t["name"]: t for t in (data or manifest(root))["targets"]}
+    return {key: [Path(targets[n].get("path") or f"Sources/{n}").as_posix() for n in values]
+            for key, values in names.items()}
+
+
 def shared_markers(root=ROOT, check=False):
-    files = sorted((root / "Shared").rglob("*.swift"))
-    fingerprints = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+    shared_access(root)
+    packages = inventory(root)
     changed = []
-    for key, package in inventory(root).items():
-        if not any(p["mode"] == "vendor" for p in package["policies"].values()):
+    for key, paths in vendored(packages, root).items():
+        if not paths:
             continue
-        path = root / package["path"] / "shared-source.json"
+        # Only the vendored targets' files, so an unrelated shared target selects nothing here.
+        fingerprints = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                        for p in sorted(f for path in paths for f in (root / path).rglob("*.swift"))}
+        path = root / packages[key]["path"] / "shared-source.json"
         if not path.exists() or load(path) != fingerprints:
             changed.append(key)
             if not check:
@@ -30,18 +53,20 @@ def affected(paths, root=ROOT, base_ref="HEAD"):
     result = []
     packages = inventory(root)
     dependency_changes = set()
+    data = None
     if {"Package.swift", "release/packages.json"}.intersection(paths):
-        expected = package_requirements(manifest(root), packages)
+        data = manifest(root)
+        expected = package_requirements(data, packages)
         for key, package in packages.items():
             marker = package["path"] + "/dependency-requirements.json"
             # Require an explicit committed baseline. Missing history is an error.
             before = json.loads(git(root, "show", f"{base_ref}:{marker}"))
             if before != expected[key]:
                 dependency_changes.add(key)
+    sources = vendored(packages, root, data)
     for key, p in packages.items():
-        if any(path.startswith(p["path"] + "/") or
-               (path.startswith("Shared/") and any(d["mode"] == "vendor" for d in p["policies"].values()))
-               for path in paths) or key in dependency_changes:
+        if any(path.startswith(tuple(d + "/" for d in [p["path"], *sources[key]])) for path in paths) \
+                or key in dependency_changes:
             result.append(key)
     return result
 

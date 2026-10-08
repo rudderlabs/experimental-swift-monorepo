@@ -12,6 +12,49 @@ SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z"
 PLATFORM = re.compile(r"(iOS|macOS|macCatalyst|tvOS|watchOS|visionOS) ([1-9][0-9]*)(?:\.([0-9]+))?\Z")
 TOOLS = re.compile(r"[1-9][0-9]*\.[0-9]+(?:\.[0-9]+)?\Z")
 RESOURCE_RULES = ({"process": {}}, {"copy": {}})
+LEXEME = re.compile(r'//[^\n]*|/\*|(#*)("""|")')
+BLOCK = re.compile(r"/\*|\*/")
+# `open` is contextual, so it counts only before another modifier or a declaration keyword.
+WIDE_ACCESS = re.compile(r"(?<![\w`.])(?:public\b|open(?:\s*\(set\))?(?=\s+(?:@|(?:class|func|var|let|subscript|"
+                         r"static|final|override|required|convenience|dynamic|lazy|weak|unowned|nonisolated|"
+                         r"public|open|package|internal)\b)))")
+IMPORT_KIND = r"(?:(?:typealias|struct|class|enum|protocol|let|var|func)[ \t]+)?"
+
+
+def code_only(text):
+    """Blank comments and string literals, keeping line numbers."""
+    parts, i = [], 0
+    while match := LEXEME.search(text, i):
+        parts.append(text[i:match.start()])
+        if match[0] == "/*":
+            depth, end = 1, match.end()
+            while depth and (inner := BLOCK.search(text, end)):
+                depth, end = depth + (1 if inner[0] == "/*" else -1), inner.end()
+            end = len(text) if depth else end
+        elif match[0].startswith("//"):
+            end = match.end()
+        else:
+            hashes, quote = match[1], match[2]
+            close = re.compile(rf"(?:\\{hashes}[\s\S]|[\s\S])*?{quote}{hashes}").match(text, match.end())
+            end = close.end() if close else len(text)
+        parts.append(re.sub(r"[^\n]", " ", text[match.start():end]))
+        i = end
+    return "".join(parts) + text[i:]
+
+
+def wide_access(text):
+    """Line numbers of `public`/`open` modifiers outside comments and strings."""
+    code = code_only(text)
+    return [code.count("\n", 0, m.start()) + 1 for m in WIDE_ACCESS.finditer(code)]
+
+
+def strip_imports(content, modules):
+    """Drop imports of vendored modules, whatever their attributes, kind, or line ending."""
+    for module in modules:
+        content = re.sub(rf"^[ \t]*(?:@\w+(?:\([^)\r\n]*\))?[ \t]+)*(?:(?:public|package|internal)[ \t]+)?"
+                         rf"import[ \t]+{IMPORT_KIND}{re.escape(module)}(?:\.[\w.]+)?[ \t]*(?://[^\r\n]*)?"
+                         r"(?:\r?\n|\Z)", "", content, flags=re.M)
+    return content
 
 
 def graph(root):
@@ -112,13 +155,13 @@ def export(key, version, destination, root=ROOT):
             if name != target:
                 output /= Path("Vendored") / name
             output /= relative
-            content = source.read_text()
-            for shared in selected:
-                if policies.get(shared, {}).get("mode") == "vendor":
-                    content = re.sub(rf"^import {re.escape(shared)}\n", "", content, flags=re.M)
-            # Shared declarations have module-local visibility. Each integration owns its copy.
+            content = source.read_bytes().decode()
+            if name != target and wide_access(content):
+                raise ValueError(f"Vendored code must use package access, not public/open: {relative}")
+            content = strip_imports(content, [n for n in selected if policies.get(n, {}).get("mode") == "vendor"])
+            # Shared declarations use `package` access. Each integration owns its copy.
             (destination / output).parent.mkdir(parents=True, exist_ok=True)
-            (destination / output).write_text(content)
+            (destination / output).write_bytes(content.encode())
             copied.append({"source": source.relative_to(root).as_posix(), "output": output.as_posix()})
         if name == target:
             # Rules and folder paths come from dump-package; describe expands folders into files.
