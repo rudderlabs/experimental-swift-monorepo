@@ -2,7 +2,9 @@
 
 History mode clones the repository, rewrites it under the package folder with `git filter-repo`
 immediately (old tags become `legacy/<key>/<tag>`), and starts a merge of that tag with
-`--allow-unrelated-histories`. Snapshot mode copies the files at the tag. Both remove nested
+`--allow-unrelated-histories`. Snapshot mode copies the files at the tag. With `--ref` (a branch or SHA that
+descends from the tag and differs from it only in non-code files such as LICENSE, README or CODEOWNERS) either mode
+imports that commit instead, while the version stays the tag's. Both remove nested
 package and per-repository files, move the example app to `Examples/<Name>/`, add the root
 Package.swift lines and the package list entry, run the `make sync` steps and stage the result.
 There is deliberately no Release Please entry: it follows the anchor tag (D21).
@@ -10,9 +12,11 @@ There is deliberately no Release Please entry: it follows the anchor tag (D21).
 import argparse
 import json
 import os
+from fnmatch import fnmatch
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import tempfile
 
 from common import OWNER, ROOT, git, inventory, run
@@ -30,6 +34,11 @@ EXAMPLES = ("Example", "Examples")
 SDK_IDENTITIES = ("rudder-sdk-swift",)
 PLATFORM_NAMES = {"ios": "iOS", "macos": "macOS", "maccatalyst": "macCatalyst", "tvos": "tvOS",
                   "watchos": "watchOS", "visionos": "visionOS"}
+# Paths that may differ between TAG and REF (fnmatch, `*` also matches `/`); never anything under Sources/.
+NON_CODE = ("*.md", "LICENSE*", "CODEOWNERS", ".github/*", "docs/*", ".gitignore")
+MANIFESTS = ("Package.swift", "Package@swift-*.swift")
+# The parts of `swift package dump-package` that must not change between TAG and REF.
+SEMANTICS = ("products", "targets", "dependencies", "platforms", "toolsVersion")
 LOCAL_PACKAGE = re.compile(r'(isa = XCLocalSwiftPackageReference;\s*relativePath = )("?)([^";\n]*)\2;')
 LOCAL_COMMENT = re.compile(r'(XCLocalSwiftPackageReference ")([^"]*)(")')
 
@@ -145,14 +154,59 @@ def relink_examples(root, examples, previous, old, names):
     return changed
 
 
-def prepare(clone, tag, dest, key, mode):
-    """Check out the tag in the clone (rewritten under the package folder in history mode); return the legacy tags."""
+def probe(repo, *args):
+    """A git command whose exit status is the answer."""
+    return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+
+
+def resolve(clone, ref):
+    """The commit of a branch (as cloned, under origin/), tag or SHA in the fresh clone."""
+    for name in (f"refs/remotes/origin/{ref}", ref):
+        found = probe(clone, "rev-parse", "--quiet", "--verify", f"{name}^{{commit}}")
+        if found.returncode == 0:
+            return found.stdout.strip()
+    raise ValueError(f"Ref {ref} not found")
+
+
+def semantics(clone, commit, temp):
+    """The dump-package parts that matter, evaluated from the manifests at the commit alone."""
+    folder = Path(temp) / commit
+    folder.mkdir()
+    for name in git(clone, "ls-tree", "--name-only", commit).splitlines():
+        if any(fnmatch(name, m) for m in MANIFESTS):
+            (folder / name).write_text(git(clone, "show", f"{commit}:{name}") + "\n")
+    data = manifest(folder)
+    return {k: data.get(k) for k in SEMANTICS}
+
+
+def check_ref(clone, tag, original, ref, commit, temp):
+    """REF must descend from TAG and differ only in non-code files and same-semantics manifests; return those files.
+
+    Read-only on the clone, so `git filter-repo` still sees a fresh clone.
+    """
+    if probe(clone, "merge-base", "--is-ancestor", original, commit).returncode:
+        raise ValueError(f"Tag {tag} is not an ancestor of {ref} ({commit})")
+    changed = [p for p in git(clone, "diff", "--no-renames", "--name-only", "-z", original, commit).split("\0") if p]
+    manifests = [p for p in changed if any(fnmatch(p, m) for m in MANIFESTS)]
+    code = [p for p in changed if p not in manifests and (p.startswith("Sources/") or
+                                                          not any(fnmatch(p, n) for n in NON_CODE))]
+    if manifests and semantics(clone, original, temp) != semantics(clone, commit, temp):
+        code += [f"{p} ({', '.join(SEMANTICS)})" for p in manifests]
+    if code:
+        raise ValueError(f"{ref} ({commit}) changes code since {tag}; import the tag or release first: "
+                         + ", ".join(sorted(code)))
+    return sorted(changed)
+
+
+def prepare(clone, tag, dest, key, mode, commit):
+    """Check out the commit in the clone (rewritten under the package folder in history mode); return legacy tags."""
     if mode == "snapshot":
-        git(clone, "checkout", "--quiet", "--detach", f"refs/tags/{tag}")
+        git(clone, "checkout", "--quiet", "--detach", commit)
         return []
     # Rewrite the fresh clone before anything else touches it.
     git(clone, "filter-repo", "--quiet", "--to-subdirectory-filter", dest, "--tag-rename", f":legacy/{key}/")
-    git(clone, "branch", f"import/{key}", f"legacy/{key}/{tag}")
+    rewritten = dict(line.split()[:2] for line in (clone / ".git/filter-repo/commit-map").read_text().splitlines()[1:])
+    git(clone, "branch", f"import/{key}", rewritten[commit])
     git(clone, "checkout", "--quiet", f"import/{key}")
     return git(clone, "tag", "--list").splitlines()
 
@@ -171,7 +225,8 @@ def place(root, clone, dest, key, mode):
     return git(clone, "rev-parse", "HEAD")
 
 
-def import_package(repo, tag, name, mode, root=ROOT, kind="integration"):
+def import_package(repo, tag, name, mode, root=ROOT, kind="integration", ref=None):
+    """Import TAG, or with `ref` that later commit (non-code changes only) at TAG's version."""
     if mode not in MODES or kind not in KINDS:
         raise ValueError(f"MODE must be one of {MODES} and KIND one of {KINDS}")
     if not SEMVER.fullmatch(tag) or not NAME.fullmatch(name):
@@ -194,7 +249,9 @@ def import_package(repo, tag, name, mode, root=ROOT, kind="integration"):
         if tags != [tag]:
             raise ValueError(f"Tag {tag} not found in {repo}")
         original = git(clone, "rev-parse", f"refs/tags/{tag}^{{commit}}")
-        legacy = prepare(clone, tag, dest, key, mode)
+        commit = resolve(clone, ref) if ref else original
+        non_code = check_ref(clone, tag, original, ref, commit, temp) if ref else []
+        legacy = prepare(clone, tag, dest, key, mode, commit)
         checkout = clone / dest if mode == "history" else clone
         # Everything that can fail runs before the monorepo changes.
         lines, entry = describe(manifest(checkout), key, dest, sdk_target, repository)
@@ -233,7 +290,8 @@ def import_package(repo, tag, name, mode, root=ROOT, kind="integration"):
     add_package(root, key, {**entry, "repository": repository})
     synced = sync(root)
     git(root, "add", "--all")
-    return {"package": key, "mode": mode, "source": source(repo), "tag": tag, "sha": original, "imported": imported,
+    return {"package": key, "mode": mode, "source": source(repo), "tag": tag, "ref": ref, "sha": commit,
+            "tagSha": original, "nonCode": non_code, "imported": imported,
             "path": dest, "component": entry["component"], "target": entry["target"], "repository": repository,
             "sdkMinimum": entry.get("sdkMinimum"), "removed": removed,
             "examples": f"Examples/{name}" if examples else None, "relinked": relinked,
@@ -243,17 +301,23 @@ def import_package(repo, tag, name, mode, root=ROOT, kind="integration"):
 def steps(result):
     """What the developer does next (Path A)."""
     key, tag, component, path = result["package"], result["tag"], result["component"], result["path"]
-    title = f"build({key}): import {Path(result['source']).name.removesuffix('.git')} {tag}"
+    repo, ref, sha = Path(result["source"]).name.removesuffix(".git"), result.get("ref"), result["sha"]
+    title = f"build({key}): import {repo} " + (f"{ref} ({sha[:12]}) at version {tag}" if ref else tag)
+    what = f"{ref} ({sha}) at version {tag}" if ref else f"{tag} ({sha})"
+    non_code = (f"Non-code files that differ between {tag} and {ref}: {', '.join(result['nonCode']) or 'none'}"
+                if ref else "")
     merge = ("merge it with a merge commit (temporary admin exception; squash loses the history)"
              if result["mode"] == "history" else "squash-merge it")
     entry = json.dumps({path: release_please_entry(component, result["target"])})
     return "\n".join([
-        f"Imported {result['source']} {tag} ({result['sha']}) into {path}, staged; nothing was committed or pushed.",
-        f"Review `git status`, then commit: git commit -m \"{title}\" -m \"Source: {result['source']} {tag} "
-        f"({result['sha']}), {result['mode']} import\"",
+        f"Imported {result['source']} {what} into {path}, staged; nothing was committed or pushed.",
+        *([non_code] if ref else []),
+        f"Review `git status`, then commit: git commit -m \"{title}\" -m \"Source: {result['source']} {what}, "
+        f"{result['mode']} import{'. ' + non_code if ref else ''}\"",
         "",
         "Path A, next steps:",
-        f"1. Open the import PR \"{title}\" and {merge}. Record the merge SHA.",
+        f"1. Open the import PR \"{title}\" and {merge}"
+        + (f"; state in its body: {result['source']} {what}. {non_code}." if ref else ".") + " Record the merge SHA.",
         f"2. Run Actions > Anchor package (package={key}, version={tag}, sha=<merge SHA>) to create the plain tag "
         f"{component}-{tag} on the merge commit (no Release).",
         f"3. Open \"build({key}): enable releases\": add {entry} to release-please-config.json and "
@@ -268,5 +332,7 @@ if __name__ == "__main__":
     parser.add_argument("name")
     parser.add_argument("--mode", choices=MODES, default="history")
     parser.add_argument("--kind", choices=KINDS, default="integration")
+    parser.add_argument("--ref", default="", help="branch or SHA after the tag with non-code changes only "
+                                                    "(e.g. main); imported at the tag's version")
     args = parser.parse_args()
-    print(steps(import_package(args.repo, args.tag, args.name, args.mode, kind=args.kind)))
+    print(steps(import_package(args.repo, args.tag, args.name, args.mode, kind=args.kind, ref=args.ref or None)))

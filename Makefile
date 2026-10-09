@@ -46,6 +46,7 @@ new-integration:
 		$(if $(PLATFORMS),--platforms "$(PLATFORMS)") $(if $(SDK_MIN),--sdk-minimum "$(SDK_MIN)") \
 		$(if $(VENDOR_URL),--vendor-url "$(VENDOR_URL)" --vendor-products "$(VENDOR_PRODUCTS)" --vendor-from "$(VENDOR_FROM)")
 
-## Path A: make import-integration REPO=<repo> TAG=<X.Y.Z> NAME=<Name> MODE=history|snapshot [KIND=core]
+## Path A: make import-integration REPO=<repo> TAG=<X.Y.Z> NAME=<Name> MODE=history|snapshot [KIND=core] [REF=<branch-or-sha>]
+## REF imports a later commit (e.g. main) that differs from TAG only in non-code files, at TAG's version.
 import-integration:
-	$(PYTHON) scripts/import_package.py "$(REPO)" "$(TAG)" "$(NAME)" --mode "$(MODE)" --kind "$(KIND)"
+	$(PYTHON) scripts/import_package.py "$(REPO)" "$(TAG)" "$(NAME)" --mode "$(MODE)" --kind "$(KIND)" --ref "$(REF)"

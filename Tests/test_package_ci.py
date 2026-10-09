@@ -15,7 +15,7 @@ os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from common import ROOT
-from package_ci import failed_needs, main, manifest_problems, matrix, scope_warnings, test_command, test_targets
+from package_ci import failed_needs, main, manifest_problems, matrix, scheme, scope_warnings, test_command, test_targets
 
 FIXTURE = ROOT / "Tests/Fixtures/demo"
 PICK = ROOT / "scripts/ci/pick-simulator.sh"
@@ -124,10 +124,22 @@ class TestTargetTests(unittest.TestCase):
 
     def test_command_uses_the_package_scheme_and_the_picked_simulator(self):
         command = test_command(DEMO, "sprig", {"path": "Integrations/Sprig", "target": "DemoSprig"}, "UDID-1")
-        self.assertEqual(command, ["xcodebuild", "test", "-quiet", "-collect-test-diagnostics", "never", "-scheme", "SwiftPublicationExperiment-Package",
+        self.assertEqual(command, ["xcodebuild", "test", "-quiet", "-collect-test-diagnostics", "never", "-parallel-testing-enabled", "NO",
+                                   "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "120", "-scheme", "SwiftPublicationExperiment-Package",
                                    "-destination", "platform=iOS Simulator,id=UDID-1", "-only-testing:DemoTests"])
         with self.assertRaisesRegex(ValueError, "no test target"):
             test_command(DEMO, "x", {"path": "Integrations/X", "target": "X"}, "UDID-1")
+
+    def test_scheme_matches_what_xcode_generates(self):
+        # One product (only the SDK imported): Xcode names the scheme after the package, with no -Package suffix.
+        self.assertEqual(scheme("SwiftPublicationExperiment", ["SwiftPublicationExperiment"]), "SwiftPublicationExperiment")
+        self.assertEqual(scheme("SwiftPublicationExperiment", ["DemoSDK", "SwiftPublicationExperiment-Package"]),
+                         "SwiftPublicationExperiment-Package")
+        command = test_command(DEMO, "sprig", {"path": "Integrations/Sprig", "target": "DemoSprig"}, "UDID-1",
+                               ["SwiftPublicationExperiment"])
+        self.assertIn("SwiftPublicationExperiment", command)
+        with self.assertRaisesRegex(ValueError, "No Xcode scheme"):
+            scheme("SwiftPublicationExperiment", ["Other"])
 
 
 def dump(platforms, dependencies):

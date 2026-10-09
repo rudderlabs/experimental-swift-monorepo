@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from check_inventory import problems
 from common import ROOT, commit, git, inventory, load, write_json
 from dependency_policy import manifest, markers
-from import_package import import_package, steps
+from import_package import MODES, import_package, steps
 from scaffold import (ROOT_MANIFEST, insert, product_line, release_please_entry, scaffold, sdk_minimum, sync,
                       target_lines)
 
@@ -196,6 +196,19 @@ class ImportTests(unittest.TestCase):
         git(source, "tag", "-a", "1.0.0", "-m", "1.0.0")
         write(source, {"Sources/RudderIntegrationSprig/Unreleased.swift": "// after the tag\n"})
         commit(source, "fix: unreleased")
+        # Branches after (or beside) the tag: non-code only, a manifest change, and one not descending from the tag.
+        git(source, "checkout", "--quiet", "-b", "relicense", "1.0.0")
+        write(source, {"README.md": "# Sprig\n\nMIT licensed.\n", "LICENSE.md": "MIT, new holder\n",
+                       "CODEOWNERS": "* @rudderlabs/sdk_team\n",
+                       "Package.swift": SOURCE_MANIFEST + "// formatting only\n"})
+        cls.relicensed = commit(source, "chore: relicense under MIT")
+        git(source, "checkout", "--quiet", "-b", "platforms", "1.0.0")
+        write(source, {"Package.swift": SOURCE_MANIFEST.replace(", .tvOS(.v15)", ""), "README.md": "# Sprig!\n"})
+        commit(source, "chore: drop tvOS")
+        git(source, "checkout", "--quiet", "-b", "beside", "0.9.0")
+        write(source, {"README.md": "# Sprig beside\n"})
+        cls.beside = commit(source, "docs: beside the tag")
+        git(source, "checkout", "--quiet", "main")
 
     @classmethod
     def tearDownClass(cls):
@@ -207,7 +220,7 @@ class ImportTests(unittest.TestCase):
         self.root = monorepo(Path(self.temp.name))
         self.head = git(self.root, "rev-parse", "HEAD")
 
-    def assert_imported(self, output):
+    def assert_imported(self, output, title="build(sprig): import experimental-integration-swift-sprig 1.0.0"):
         root, path = self.root, self.root / "Integrations/Sprig"
         self.assertEqual(git(root, "rev-parse", "HEAD"), self.head, "nothing is committed")
         self.assertEqual(git(root, "diff", "--name-only"), "", "everything is staged")
@@ -238,8 +251,7 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(load(root / ".release-please-manifest.json"), {SDK: "1.4.0"})
         self.assertEqual(problems(root), [])
         self.assertEqual(markers(root, check=True), [])
-        for text in ('build(sprig): import experimental-integration-swift-sprig 1.0.0',
-                     "1. Open the import PR", "2. Run Actions > Anchor package (package=sprig, version=1.0.0",
+        for text in (title, "1. Open the import PR", "2. Run Actions > Anchor package (package=sprig, version=1.0.0",
                      "plain tag integration-sprig-1.0.0", '3. Open "build(sprig): enable releases"',
                      '"Integrations/Sprig": "1.0.0"'):
             self.assertIn(text, output)
@@ -268,6 +280,57 @@ class ImportTests(unittest.TestCase):
         git(root, "commit", "--quiet", "-m", "build(sprig): import experimental-integration-swift-sprig 1.0.0")
         self.assertEqual(git(root, "rev-parse", "HEAD^2"), result["imported"])
         self.assertEqual(git(root, "tag", "--list"), "")
+
+    def assert_unchanged(self):
+        self.assertEqual(git(self.root, "status", "--porcelain"), "")
+        self.assertEqual(git(self.root, "rev-parse", "HEAD"), self.head)
+        self.assertFalse((self.root / ".git/MERGE_HEAD").exists())
+
+    def test_history_import_of_a_non_code_ref_keeps_the_tag_version(self):
+        result = import_package(str(self.source), "1.0.0", "Sprig", "history", self.root, ref="relicense")
+        root, output = self.root, steps(result)
+        self.assertEqual((result["ref"], result["sha"], result["tagSha"]), ("relicense", self.relicensed, self.tagged))
+        self.assertEqual(result["nonCode"], ["CODEOWNERS", "LICENSE.md", "Package.swift", "README.md"])
+        self.assertEqual(result["legacyTags"], ["legacy/sprig/0.9.0", "legacy/sprig/1.0.0"])
+        self.assertEqual(git(root, "rev-list", "--count", "MERGE_HEAD"), "3", "the relicense commit comes along")
+        self.assertIn("MIT licensed.", (root / "Integrations/Sprig/README.md").read_text())
+        self.assert_imported(output, "build(sprig): import experimental-integration-swift-sprig relicense "
+                                     f"({self.relicensed[:12]}) at version 1.0.0")
+        self.assertIn(f"relicense ({self.relicensed}) at version 1.0.0", output)
+        self.assertIn("Non-code files that differ between 1.0.0 and relicense: CODEOWNERS, LICENSE.md, Package.swift, "
+                      "README.md", output)
+
+    def test_snapshot_import_of_a_non_code_sha_keeps_the_tag_version(self):
+        result = make(self.root, "import-integration", f"REPO={self.source}", "TAG=1.0.0", "NAME=Sprig",
+                      "MODE=snapshot", f"REF={self.relicensed}")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / ".git/MERGE_HEAD").exists())
+        self.assertIn("MIT licensed.", (self.root / "Integrations/Sprig/README.md").read_text())
+        sha = self.relicensed
+        self.assert_imported(result.stdout, f"import experimental-integration-swift-sprig {sha} ({sha[:12]}) at "
+                                            "version 1.0.0")
+        self.assertIn("Non-code files that differ between 1.0.0 and", result.stdout)
+
+    def test_ref_with_code_or_manifest_changes_or_off_the_tag_fails_without_changes(self):
+        for mode in MODES:
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(ValueError, r"main \([0-9a-f]{40}\) changes code since 1\.0\.0.*: "
+                                                        r"Sources/RudderIntegrationSprig/Unreleased\.swift$"):
+                    import_package(str(self.source), "1.0.0", "Sprig", mode, self.root, ref="main")
+                self.assert_unchanged()
+        with self.assertRaisesRegex(ValueError, r"changes code since 1\.0\.0.*: Package\.swift \(products, targets, "
+                                                r"dependencies, platforms, toolsVersion\)$"):
+            import_package(str(self.source), "1.0.0", "Sprig", "history", self.root, ref="platforms")
+        self.assert_unchanged()
+        with self.assertRaisesRegex(ValueError, f"Tag 1.0.0 is not an ancestor of beside \\({self.beside}\\)"):
+            import_package(str(self.source), "1.0.0", "Sprig", "snapshot", self.root, ref="beside")
+        with self.assertRaisesRegex(ValueError, "Ref nowhere not found"):
+            import_package(str(self.source), "1.0.0", "Sprig", "history", self.root, ref="nowhere")
+        result = make(self.root, "import-integration", f"REPO={self.source}", "TAG=1.0.0", "NAME=Sprig",
+                      "MODE=history", "REF=main")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Sources/RudderIntegrationSprig/Unreleased.swift", result.stderr)
+        self.assert_unchanged()
 
     def test_import_refuses_unknown_keys_and_tags_without_changes(self):
         with self.assertRaisesRegex(ValueError, "add braze to release/allowlist.json first"):

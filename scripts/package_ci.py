@@ -40,13 +40,28 @@ def test_targets(data, package):
                    for d in t["dependencies"])]
 
 
-def test_command(data, key, package, simulator):
+def scheme(name, schemes):
+    """Xcode adds `<Package>-Package` only when the package has several products; one product gets `<Package>`."""
+    for candidate in (name + "-Package", name):
+        if candidate in schemes:
+            return candidate
+    raise ValueError(f"No Xcode scheme for package {name} (found: {', '.join(schemes) or 'none'})")
+
+
+def schemes(root=ROOT):
+    data = json.loads(run(["xcodebuild", "-list", "-json"], cwd=root))
+    return (data.get("workspace") or data.get("project") or {}).get("schemes", [])
+
+
+def test_command(data, key, package, simulator, available=None):
     targets = test_targets(data, package)
     if not targets:
         raise ValueError(f"{key}: no test target under {package['path']}/Tests or depending on {package['target']}")
     # No failure diagnostics: `simctl diagnose` after a failing test can stall for many minutes.
-    return ["xcodebuild", "test", "-quiet", "-collect-test-diagnostics", "never",
-            "-scheme", data["name"] + "-Package", "-destination", f"platform=iOS Simulator,id={simulator}",
+    # Serial, like the SDK's `swift test --no-parallel` (its async tests hang in parallel); a hung test fails after 2 min.
+    return ["xcodebuild", "test", "-quiet", "-collect-test-diagnostics", "never", "-parallel-testing-enabled", "NO",
+            "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "120",
+            "-scheme", scheme(data["name"], available if available is not None else [data["name"] + "-Package"]), "-destination", f"platform=iOS Simulator,id={simulator}",
             *[f"-only-testing:{name}" for name in targets]]
 
 
@@ -63,8 +78,9 @@ def test(keys=None, root=ROOT):
         raise ValueError(f"Unknown package: {', '.join(unknown)} (known: {', '.join(packages) or 'none'})")
     data = manifest(root)
     simulator = run([PICK_SIMULATOR], cwd=root)
+    available = schemes(root)
     for key in keys or packages:
-        command = test_command(data, key, packages[key], simulator)
+        command = test_command(data, key, packages[key], simulator, available)
         print(f"test ({key}): {' '.join(command)}", flush=True)
         if subprocess.run(command, cwd=root).returncode:
             raise SystemExit(f"test ({key}) failed")
