@@ -3,7 +3,7 @@
 Local preparation for [SDK-5388](https://linear.app/rudderstack/issue/SDK-5388), under [SDK-5384](https://linear.app/rudderstack/issue/SDK-5384).
 This repository contains representative demo code, not imported production SDK code.
 
-**Status (2026-10-08):** the demo packages moved to `Tests/Fixtures/demo/` and are now test data only. The root has no packages until the real SDK, Sprig and Firebase are imported. Releases are paused (`EXPERIMENTAL_RELEASES_ENABLED=false`) and completion is manual (no schedule). The `.lab` rehearsal below targets the old demo layout and is rewritten in a later step.
+**Status (2026-10-08):** the demo packages moved to `Tests/Fixtures/demo/` and are now test data only. The root has no packages until the real SDK, Sprig and Firebase are imported. Releases are paused (`EXPERIMENTAL_RELEASES_ENABLED=false`) and completion is manual (no schedule).
 The original one-integration prototype remains at `/Users/denis/git/swift-monorepo-example`.
 
 Dependency-management preparation (2026-09-22): [staged configuration and acceptance procedure](docs/dependency-management/README.md). The YAML template is dormant outside `.github`; dependency authority/release-marker checks are now implemented; hosted graph/updater validation remains pending. See the [acceptance commands and gates](docs/dependency-management/ACCEPTANCE.md). Activate only when the monorepo experiment resumes.
@@ -21,25 +21,33 @@ Remote execution is gated by `EXPERIMENTAL_RELEASES_ENABLED`. Hosted permission 
 
 ## Run the complete local rehearsal
 
-Requirements: macOS, Xcode, Swift 5.9 or later, Python 3.9 or later, and Git.
-The iOS app requires an iOS 16 or later simulator. No signing account is needed.
-The consumer template must be a sibling checkout named `experimental-swift-example-consumer-app`.
-A network connection is needed for the public Swift Collections dependency.
+Requirements: macOS, Xcode, Swift 5.9 or later, Python 3.9 or later, and Git. No network or GitHub access is needed.
+`--ios` also builds the consumer template's iOS app; it needs an iOS 16 or later simulator runtime and a sibling checkout named `experimental-swift-example-consumer-app` (or `--consumer-template <path>`). No signing account is needed.
 
 ```sh
 python3 -m unittest discover -s Tests -p 'test_*.py'
-python3 scripts/release_plan.py sync-shared --check
-python3 scripts/rehearse.py --ios
+python3 scripts/rehearse.py          # about 4 minutes; --quick skips the xcodebuild platform builds
+python3 scripts/rehearse.py --ios    # also the iOS Simulator consumer
 ```
 
-The rehearsal creates a new `.lab/<timestamp>/` folder. It does not reset existing runs.
-It uses real local Git commits, bare repositories, tags, SwiftPM resolution, and compiled consumers.
-It models GitHub Release records as local JSON. It supplies release versions explicitly.
-It does not execute Release Please, GitHub Actions, GitHub App permissions, or GitHub rulesets.
-The rehearsal publishes on default `main`, retains a protected bootstrap fixture, and freezes `develop` for compatibility tests. It checks unpublished source changes and exports a fixed approved SHA after source `main` advances.
-Each consumer has fresh SwiftPM state and no GitHub token or credential helper.
-Only the local rehearsal configures public URL mirrors to the bare test repositories.
-The generated package manifests retain the planned public URLs.
+Each run copies `Tests/Fixtures/demo` into a throwaway monorepo under a new `.lab/<timestamp>/` folder (`.lab/latest.json` points to it; earlier runs are never reset), creates one local bare "public" repository per allowlisted package (SDK and Firebase README-only, Sprig with foreign files, `.github/workflows` and tag `0.1.1`), and runs the real `publication_queue.py` and `publish.py` code paths step by step. Each step stops the run with its name on the first failed check; `evidence.json` records every Recover result, job result and check.
+
+| Step | Proves |
+| --- | --- |
+| 1 | A README-only repository gets a bootstrap bot PR; Recover never rebuilds the open PR; after merge it tags the merge commit and creates the Release |
+| 2 | A foreign repository waits as `awaiting_takeover`; takeover refuses while `.github/workflows` exists, then (after a person removes it) opens one PR with `Sources/` byte-identical to the old tag; no tag moves |
+| 3 | An integration release: export, build, bot PR, merge, Recover tags it with matching provenance and Release body |
+| 4 | An integration-only release leaves the SDK repository untouched, and an SDK-only release leaves the integrations untouched |
+| 5 | An integration that needs an unpublished SDK version waits as `awaiting_dependency`, then continues once the SDK tag exists |
+| 6 | A broken source release (off `main`) is reported and skipped while another package completes in the same Recover |
+| 7 | A hand edit in a public repository blocks publication before any branch, PR or tag; after a reviewed revert it publishes |
+| 8 | Running Recover again changes no ref, PR or Release |
+| 9 | Old tags (SDK, the pre-monorepo Sprig tag, Firebase) resolve and run in clean consumers, one package at a time |
+
+Real: Git commits, merges, branches and tags; pre-receive hooks that reject `main` pushes and tag moves; export; `swift build` and the `xcodebuild` platform builds; the `dump-package` takeover check; fresh SwiftPM consumers with no credentials.
+Modeled: `gh` (repository identity, bot PRs, Releases) as local JSON through a `gh` shim on `PATH`; Release Please as version commits, component tags and source Release records; reviewed merges as a reviewer clone plus a server-side `main` update; the App bot user id; Swift Collections as a local stand-in tag. Every `github.com` URL is rewritten to the local bare repositories or to a path that does not exist.
+Not covered: GitHub Actions, App permissions, rulesets, environments, Release Please itself, anonymous public access, and reverse sync (ingest is not implemented; step 7 reverts the hand edit instead).
+`RUN_SWIFT_BUILD_TESTS=1` runs steps 0 to 3 (`--quick`) in the unit suite.
 
 ## Structure
 
@@ -62,7 +70,7 @@ The generated package manifests retain the planned public URLs.
 | `scripts/publication_queue.py` | Recover queue: reports and skips a broken item, never rebuilds an open bot PR |
 | `scripts/anchor.py` | Validates an anchor tag request for `anchor-package.yml` |
 | `scripts/release_plan.py` | Affected package selection and reviewed shared-source markers |
-| `scripts/rehearse.py` | Developer, maintainer, and customer lifecycle rehearsal |
+| `scripts/rehearse.py` | Offline lifecycle rehearsal on temporary fixture repositories (`.lab/<timestamp>/`) |
 | `.github/workflows` | Gated release, reviewed publication, and manual recovery workflows |
 
 ## Developer path
