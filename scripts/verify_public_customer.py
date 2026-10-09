@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 
-from common import ROOT, CONSUMER_NAME, OWNER, anonymous_env, git, inventory, load, run, write_json
+from common import ROOT, CONSUMER_NAME, OWNER, allowlist, anonymous_env, git, inventory, load, run, write_json
 
 
 def verify(key, version, destination, source_root=ROOT):
@@ -31,7 +31,7 @@ def verify(key, version, destination, source_root=ROOT):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('package', choices=['sdk', 'sprig', 'firebase'])
+    parser.add_argument('package', choices=list(allowlist()))
     parser.add_argument('version')
     parser.add_argument('destination', type=Path)
     parser.add_argument('--source-root', type=Path, default=ROOT)

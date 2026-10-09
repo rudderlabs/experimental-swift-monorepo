@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import shutil
 
-from common import ROOT, anonymous_env, file_hashes, git, inventory, load, run, url, write_json
+from common import ROOT, OWNER, SOURCE_NAME, anonymous_env, file_hashes, git, inventory, load, run, url, write_json
 from dependency_policy import manifest, markers as dependency_markers
 
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
@@ -19,6 +19,7 @@ WIDE_ACCESS = re.compile(r"(?<![\w`.])(?:public\b|open(?:\s*\(set\))?(?=\s+(?:@|
                          r"static|final|override|required|convenience|dynamic|lazy|weak|unowned|nonisolated|"
                          r"public|open|package|internal)\b)))")
 IMPORT_KIND = r"(?:(?:typealias|struct|class|enum|protocol|let|var|func)[ \t]+)?"
+TRANSFORMS = ("copy", "vendored-strip-import", "generated")
 
 
 def code_only(text):
@@ -105,6 +106,13 @@ def closure(name, targets, policies):
     return result
 
 
+def template(name, key):
+    """Generated publication files come from release/templates in the trusted checkout, like the exporter."""
+    return (ROOT / "release/templates" / name).read_text().format(
+        package=key, owner=OWNER, source=SOURCE_NAME,
+        issues=f"https://github.com/{OWNER}/{SOURCE_NAME}/issues/new/choose")
+
+
 def export(key, version, destination, root=ROOT):
     if not SEMVER.fullmatch(version):
         raise ValueError("The experiment accepts stable X.Y.Z versions only")
@@ -136,7 +144,7 @@ def export(key, version, destination, root=ROOT):
         mode = policies.get(name, {}).get("mode", "source")
         if mode == "external":
             dependency = policies[name]
-            external.append(f'.package(url: "{url(dependency["package"])}", from: "{package["sdkMinimum"]}")')
+            external.append(f'.package(url: "{url(dependency["package"], root)}", from: "{package["sdkMinimum"]}")')
             target_deps.append(f'.product(name: "{name}", package: "{packages[dependency["package"]]["repository"]}")')
             continue
         entry = targets[name]
@@ -155,14 +163,17 @@ def export(key, version, destination, root=ROOT):
             if name != target:
                 output /= Path("Vendored") / name
             output /= relative
-            content = source.read_bytes().decode()
-            if name != target and wide_access(content):
+            original = source.read_bytes().decode()
+            if name != target and wide_access(original):
                 raise ValueError(f"Vendored code must use package access, not public/open: {relative}")
-            content = strip_imports(content, [n for n in selected if policies.get(n, {}).get("mode") == "vendor"])
+            content = strip_imports(original, [n for n in selected if policies.get(n, {}).get("mode") == "vendor"])
             # Shared declarations use `package` access. Each integration owns its copy.
             (destination / output).parent.mkdir(parents=True, exist_ok=True)
             (destination / output).write_bytes(content.encode())
-            copied.append({"source": source.relative_to(root).as_posix(), "output": output.as_posix()})
+            # Reverse sync copies a `copy` file back as is; vendored or stripped files need the transform undone.
+            transform = "copy" if name == target and content == original else "vendored-strip-import"
+            copied.append({"source": source.relative_to(root).as_posix(), "output": output.as_posix(),
+                           "transform": transform})
         if name == target:
             # Rules and folder paths come from dump-package; describe expands folders into files.
             rules = {Path(r["path"]).as_posix(): r["rule"] for r in declared_targets[name].get("resources") or []}
@@ -181,7 +192,8 @@ def export(key, version, destination, root=ROOT):
                     output = Path("Sources") / target / item.relative_to(base)
                     (destination / output).parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(item, destination / output)
-                    copied.append({"source": item.relative_to(root).as_posix(), "output": output.as_posix()})
+                    copied.append({"source": item.relative_to(root).as_posix(), "output": output.as_posix(),
+                                   "transform": "copy"})
                 resources.append(f'.{next(iter(rules[relative]))}("{relative}")')
     # One package line per vendor identity; its products share that requirement.
     vendors = {}
@@ -204,11 +216,21 @@ let package = Package(
     if '.package(path:' in text or "experimental-swift-monorepo" in text:
         raise ValueError("Generated package depends on private source")
     (destination / "Package.swift").write_text(text)
-    for name in ("README.md", "CHANGELOG.md"):
-        shutil.copyfile(root / package["path"] / name, destination / name)
-    shutil.copyfile(root / "LICENSE", destination / "LICENSE")
+    readme = root / package["path"] / "README.md"
+    (destination / "README.md").write_text(readme.read_text().rstrip("\n") + "\n" + template("README-block.md", key))
+    for source, name in ((root / package["path"] / "CHANGELOG.md", "CHANGELOG.md"), (root / "LICENSE", "LICENSE")):
+        shutil.copyfile(source, destination / name)
+        copied.append({"source": source.relative_to(root).as_posix(), "output": name, "transform": "copy"})
     (destination / "VERSION").write_text(version + "\n")
     (destination / ".gitignore").write_text(".build/\n.swiftpm/\nPackage.resolved\n.DS_Store\n")
+    # CODEOWNERS keeps "Require review from Code Owners" working after takeover. It is not a workflow file.
+    (destination / "CONTRIBUTING.md").write_text(template("CONTRIBUTING.md", key))
+    (destination / ".github").mkdir()
+    (destination / ".github/CODEOWNERS").write_text(template("CODEOWNERS", key))
+    copied.append({"source": readme.relative_to(root).as_posix(), "output": "README.md", "transform": "generated"})
+    listed = {c["output"] for c in copied}
+    copied += [{"source": None, "output": path, "transform": "generated"}
+               for path in sorted(file_hashes(destination)) if path not in listed]
     provenance = {"schemaVersion": 1, "package": key, "version": version,
                   "sourceCommit": git(root, "rev-parse", "HEAD"),
                   "sourceRepository": "rudderlabs/experimental-swift-monorepo",

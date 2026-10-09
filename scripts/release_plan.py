@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 
 from common import ROOT, git, inventory, load, write_json
 from project import SEMVER, wide_access
@@ -72,16 +73,25 @@ def affected(paths, root=ROOT, base_ref="HEAD"):
 
 
 def from_outputs(outputs, root=ROOT):
+    """Released packages from path-based Release Please outputs, SDK first."""
     result = []
-    for key, p in inventory(root).items():
+    packages = inventory(root)
+    for key in sorted(packages, key=lambda k: k != 'sdk'):
+        p = packages[key]
         if str(outputs.get(p['path'] + '--release_created', '')).lower() != 'true':
             continue
         version = outputs[p['path'] + '--version']
         sha = outputs[p['path'] + '--sha']
-        if not SEMVER.fullmatch(version) or not __import__('re').fullmatch('[0-9a-f]{40}', sha):
+        if not SEMVER.fullmatch(version) or not re.fullmatch('[0-9a-f]{40}', sha):
             raise ValueError('Invalid Release Please output')
         result.append({'package': key, 'version': version, 'sha': sha})
     return result
+
+
+def jobs(plan):
+    """Workflow outputs: the SDK job input and the integrations matrix."""
+    return {'plan': plan, 'sdk': next((p for p in plan if p['package'] == 'sdk'), None),
+            'integrations': [p for p in plan if p['package'] != 'sdk']}
 
 
 if __name__ == '__main__':
@@ -96,4 +106,9 @@ if __name__ == '__main__':
     elif args.command == 'affected':
         print(json.dumps(affected(args.paths, base_ref=args.base_ref)))
     else:
-        print(json.dumps(from_outputs(json.loads(os.environ['RELEASE_PLEASE_OUTPUTS']))))
+        result = jobs(from_outputs(json.loads(os.environ['RELEASE_PLEASE_OUTPUTS'])))
+        if os.environ.get('GITHUB_OUTPUT'):
+            with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                for name, value in result.items():
+                    output.write(name + '=' + json.dumps(value, separators=(',', ':')) + '\n')
+        print(json.dumps(result))

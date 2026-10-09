@@ -13,6 +13,10 @@ jobs:
     if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: experimental-spm-release
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      sdk: ${{ steps.plan.outputs.sdk }}
+      integrations: ${{ steps.plan.outputs.integrations }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
@@ -28,10 +32,73 @@ jobs:
           repositories: experimental-swift-monorepo
           permission-contents: write
           permission-pull-requests: write
-      - uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
         id: release
         with:
           token: ${{ steps.token.outputs.token }}
           target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Plan publication from path-based Release Please outputs
+        id: plan
+        env:
+          RELEASE_PLEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+        run: python3 scripts/release_plan.py from-outputs
+  sdk:
+    name: publish (sdk)
+    needs: [intent]
+    if: needs.intent.outputs.sdk != 'null'
+    uses: ./.github/workflows/publish.yml
+    with:
+      package: sdk
+      version: ${{ fromJSON(needs.intent.outputs.sdk).version }}
+      source_sha: ${{ fromJSON(needs.intent.outputs.sdk).sha }}
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
+  # One leg per released integration, after the SDK job. publish.yml holds the per-package concurrency group.
+  integrations:
+    name: publish (${{ matrix.package }})
+    needs: [intent, sdk]
+    if: always() && needs.intent.result == 'success' && needs.intent.outputs.integrations != '[]' && (needs.sdk.result == 'success' || needs.sdk.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.intent.outputs.integrations) }}
+    uses: ./.github/workflows/publish.yml
+    with:
+      package: ${{ matrix.package }}
+      version: ${{ matrix.version }}
+      source_sha: ${{ matrix.sha }}
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
+  publication-status:
+    needs: [intent, sdk, integrations]
+    if: always() && needs.intent.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Report verified customer publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PLAN: ${{ needs.intent.outputs.plan }}
+          PUBLICATION_STATUS_FILE: ${{ runner.temp }}/publication-status.json
+        run: python3 scripts/publication_status.py
+      - name: Retain publication status
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: customer-publication-status
+          path: ${{ runner.temp }}/publication-status.json

@@ -20,6 +20,9 @@ jobs:
           persist-credentials: false
       - run: python3 scripts/release_plan.py sync-shared --check
       - run: python3 scripts/dependency_policy.py check
+      - run: python3 scripts/check_inventory.py
+      - name: Install git-filter-repo (history import test)
+        run: HOMEBREW_NO_AUTO_UPDATE=1 brew install git-filter-repo
       - run: python3 -m unittest discover -s Tests -p 'test_*.py'
         env:
           RUN_SWIFT_BUILD_TESTS: "1"

@@ -8,22 +8,22 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from common import (ROOT, NAMES, OWNER, RELEASE_BRANCH, anonymous_env, commit, file_hashes, git,
-                    inventory, load, mirrors, run, swift_options, url, write_json)
+from common import (ROOT, OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, file_hashes, git,
+                    inventory, load, mirrors, run, swift_options, text, url, write_json)
 from project import export
-from reviewed_publication import reviewed_commit
+from reviewed_publication import MODES, WORKFLOWS, find_pr, layout, reviewed_commit, takeover_check, verify_merged
 
 DESTINATIONS = {"iOS": "iOS", "macOS": "macOS", "macCatalyst": "macOS,variant=Mac Catalyst",
                 "tvOS": "tvOS", "watchOS": "watchOS", "visionOS": "visionOS"}
 
 
 @contextlib.contextmanager
-def publication_lock(mirror_root, key):
+def publication_lock(mirror_root, name):
     # GitHub uses the equivalent per-package workflow concurrency group.
     if mirror_root is None:
         yield
         return
-    lock = mirror_root / (NAMES[key] + ".lock")
+    lock = mirror_root / (name + ".lock")
     with lock.open("w") as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -67,15 +67,16 @@ def validate(stage, state, mirror_root, package):
 
 
 def ensure_release(key, version, sha, provenance, mirror_root):
-    body = f"Temporary unsupported experiment.\n\nSource: {provenance['sourceCommit']}\nPublication: {sha}\n"
+    body = text("releaseBody", source=provenance["sourceCommit"], publication=sha)
+    name = allowlist()[key]
     if mirror_root:
-        record = mirror_root.parent / "modeled-github-releases" / NAMES[key] / (version + ".json")
+        record = mirror_root.parent / "modeled-github-releases" / name / (version + ".json")
         value = {"tag": version, "commit": sha, "body": body, "kind": "local-model-not-github"}
         if record.exists() and load(record) != value:
             raise ValueError("Modeled release metadata conflicts")
         write_json(record, value)
         return str(record)
-    repo = f"{OWNER}/{NAMES[key]}"
+    repo = f"{OWNER}/{name}"
     # Listing distinguishes confirmed absence from API, network, and authentication errors.
     records = json.loads(run(["gh", "api", "--paginate", "--slurp", f"repos/{repo}/releases"]))
     found = [r for page in records for r in page if r["tag_name"] == version]
@@ -87,67 +88,104 @@ def ensure_release(key, version, sha, provenance, mirror_root):
         notes = Path(temp) / "release.md"
         notes.write_text(body)
         return run(["gh", "release", "create", version, "--repo", repo, "--verify-tag",
-                    "--title", f"Experimental {version}", "--notes-file", notes])
+                    "--title", text("releaseTitle", version=version), "--notes-file", notes])
 
 
-def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
-    if key not in NAMES or inventory(root).get(key, {}).get("repository") != NAMES[key]:
-        raise ValueError("Destination is outside the fixed experimental inventory")
+def source_commit(root):
+    return git(root, "rev-parse", "HEAD")
+
+
+def waiting(status, key, version, source, **details):
+    return {"status": status, "package": key, "version": version, "sourceCommit": source, **details}
+
+
+def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="normal"):
+    # The trusted checkout's allowlist must agree with the source snapshot's inventory and allowlist.
+    name = allowlist().get(key)
+    if not name or inventory(root).get(key, {}).get("repository") != name:
+        raise ValueError("Destination is outside the reviewed allowlist")
+    if mode not in MODES:
+        raise ValueError("Unknown publication mode")
     if mirror_root:
+        if mode != "normal":
+            raise ValueError("Takeover and bootstrap use the reviewed GitHub route only")
         mirror_root = mirror_root.resolve()
-        remote = mirror_root / (NAMES[key] + ".git")
+        remote = mirror_root / (name + ".git")
         if not remote.is_dir() or git(remote, "rev-parse", "--is-bare-repository") != "true":
             raise ValueError("Local publication repository is missing or is not bare")
     else:
         if os.environ.get("ENABLE_EXPERIMENTAL_PUBLICATION") != "true":
             raise ValueError("Remote publication is disabled")
         remote = url(key)
-        details = json.loads(run(["gh", "repo", "view", f"{OWNER}/{NAMES[key]}",
+        details = json.loads(run(["gh", "repo", "view", f"{OWNER}/{name}",
                                   "--json", "nameWithOwner,visibility,isArchived"]))
-        if details != {"nameWithOwner": f"{OWNER}/{NAMES[key]}", "visibility": "PUBLIC", "isArchived": False}:
+        if details != {"nameWithOwner": f"{OWNER}/{name}", "visibility": "PUBLIC", "isArchived": False}:
             raise ValueError("Experimental repository identity, visibility, or archive state differs")
-    with publication_lock(mirror_root, key), tempfile.TemporaryDirectory(prefix=f"publish-{key}-") as temp:
+    with publication_lock(mirror_root, name), tempfile.TemporaryDirectory(prefix=f"publish-{key}-") as temp:
         temp = Path(temp)
         stage, repo = temp / "export", temp / "publication"
-        expected = export(key, version, stage, root)
         package = inventory(root)[key]
+        source = source_commit(root)
+
+        def prepare(full):
+            # Export only when a version is not merged yet; merged versions use stored provenance (D25).
+            expected = export(key, version, stage, root)
+            if full:
+                validate(stage, temp / "validation", mirror_root, package)
+                if mode == "takeover":
+                    git(repo, "worktree", "add", "--detach", temp / "baseline", f"refs/tags/{version}")
+                    takeover_check(temp / "baseline", stage, package["target"])
+            return expected
+
         run(["git", "clone", "--no-checkout", remote, repo])
         existing = tag_exists(repo, version)
         publication_ref = f"refs/remotes/origin/{RELEASE_BRANCH}"
         has_branch = publication_ref in git(
             repo, "for-each-ref", "--format=%(refname)", publication_ref
         ).splitlines()
+        state = None
         if has_branch:
             git(repo, "checkout", "-B", RELEASE_BRANCH, publication_ref)
-            verify_tree(repo)
+            state = layout(repo)
+            if state == "generated":
+                verify_tree(repo)
+        if mirror_root is None:
+            if not has_branch:
+                raise ValueError("Reviewed publication requires a seeded main branch")
+            if state == "foreign" and mode != "takeover":
+                if mode == "bootstrap":
+                    raise ValueError("Bootstrap needs a README-only publication repository")
+                # Not taken over yet: wait without blocking other packages (D28).
+                return waiting("awaiting_takeover", key, version, source,
+                               reason="The publication repository is not taken over yet; dispatch mode takeover")
+            if mode == "takeover":
+                return takeover(key, version, source, repo, stage, prepare, state, existing)
         if existing:
             git(repo, "checkout", "--detach", f"refs/tags/{version}")
-            if verify_tree(repo) != expected:
-                raise ValueError("Existing tag conflicts with source, version, policy, or file hashes")
+            try:
+                expected = verify_merged(repo, key, version, source, verify_tree)
+            except ValueError as error:
+                raise ValueError("Existing tag conflicts with source, version, policy, or file hashes") from error
             sha = git(repo, "rev-parse", "HEAD")
             if mirror_root is None:
                 git(repo, "merge-base", "--is-ancestor", sha, "origin/main")
-            validate(stage, temp / "validation", mirror_root, package)
         elif mirror_root is None:
-            if not has_branch:
-                raise ValueError("Reviewed publication requires a seeded main branch")
             # Dependency readiness is a waiting state, not permission to publish a broken package.
-            minimum = inventory(root)[key].get("sdkMinimum")
+            minimum = package.get("sdkMinimum")
             if minimum and not run(["git", "ls-remote", url("sdk"), f"refs/tags/{minimum}"]):
-                return {"status": "awaiting_dependency", "package": key, "version": version,
-                        "sourceCommit": expected["sourceCommit"], "dependency": "sdk", "minimum": minimum}
-            validate(stage, temp / "validation", mirror_root, package)
-            sha, pr = reviewed_commit(key, version, repo, stage, expected, verify_tree)
+                return waiting("awaiting_dependency", key, version, source, dependency="sdk", minimum=minimum)
+            kind = "bootstrap" if state == "readme-only" else "normal"
+            sha, pr = reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, kind)
             if sha is None:
-                return {"status": "awaiting_review", "package": key, "version": version,
-                        "sourceCommit": expected["sourceCommit"], "pullRequest": pr["html_url"],
-                        "pullRequestNumber": pr["number"], "branch": pr["head"]["ref"]}
+                return waiting("awaiting_review", key, version, source, pullRequest=pr["html_url"],
+                               pullRequestNumber=pr["number"], branch=pr["head"]["ref"], mode=kind)
+            expected = load(repo / ".publication.json")
             if interrupt == "after-commit":
                 raise InterruptedError("Injected interruption after verified PR merge")
             git(repo, "tag", version, sha)
             git(repo, "push", "origin", f"refs/tags/{version}")
         else:
-            validate(stage, temp / "validation", mirror_root, package)
+            expected = prepare(True)
             if has_branch and load(repo / ".publication.json") == expected:
                 # Recover after the generated publication commit was pushed without its tag.
                 sha = git(repo, "rev-parse", "HEAD")
@@ -166,7 +204,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
                     # Bootstrap the publication branch without checking out or inheriting a locked default branch.
                     git(repo, "symbolic-ref", "HEAD", f"refs/heads/{RELEASE_BRANCH}")
                 shutil.copytree(stage, repo, dirs_exist_ok=True)
-                sha = commit(repo, f"chore: sdk-5388 publish experimental {key} {version}")
+                sha = commit(repo, text("commit", package=key, version=version))
                 git(repo, "push", "origin", f"HEAD:refs/heads/{RELEASE_BRANCH}")
             if interrupt == "after-commit":
                 raise InterruptedError("Injected interruption after publication push")
@@ -185,17 +223,42 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None):
                 "transport": "local-git" if mirror_root else "github"}
 
 
+def takeover(key, version, source, repo, stage, prepare, state, existing):
+    """One reviewed bot PR replaces a foreign repository with the export at its existing tag. No tag is created."""
+    if state == "readme-only":
+        raise ValueError("A README-only publication repository uses mode bootstrap")
+    if state == "generated":
+        pr = find_pr(key, version, "takeover")
+        if not (pr and pr["merged"]):
+            raise ValueError("The publication repository is already taken over; use mode normal")
+    elif (repo / ".github/workflows").exists():
+        # The release bot has no Workflows permission (D31).
+        return waiting("awaiting_takeover", key, version, source, reason=WORKFLOWS)
+    if not existing:
+        raise ValueError(f"Takeover needs the existing baseline tag {version} in the publication repository")
+    sha, pr = reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, "takeover")
+    if sha is None:
+        return waiting("awaiting_review", key, version, source, pullRequest=pr["html_url"],
+                       pullRequestNumber=pr["number"], branch=pr["head"]["ref"], mode="takeover")
+    # Taken over: the existing tag stays where it is and serves byte-identical Sources/.
+    return {"status": "published", "package": key, "version": version, "sourceCommit": source,
+            "publicationCommit": sha, "tag": version, "takeover": True, "pullRequest": pr["html_url"],
+            "branch": RELEASE_BRANCH, "transport": "github"}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("package", choices=list(NAMES))
+    parser.add_argument("package", choices=list(allowlist()))
     parser.add_argument("version")
     parser.add_argument("--local-remotes", type=Path)
     parser.add_argument("--interrupt", choices=["after-commit", "after-tag"])
     parser.add_argument("--source-root", type=Path, default=ROOT)
     parser.add_argument("--result-file", type=Path)
+    parser.add_argument("--mode", choices=MODES, default="normal")
     args = parser.parse_args()
     try:
-        result = publish(args.package, args.version, args.local_remotes, root=args.source_root, interrupt=args.interrupt)
+        result = publish(args.package, args.version, args.local_remotes, root=args.source_root,
+                         interrupt=args.interrupt, mode=args.mode)
     except (ValueError, RuntimeError, OSError, InterruptedError) as error:
         result = {"status": "incomplete", "package": args.package, "version": args.version,
                   "error": str(error),

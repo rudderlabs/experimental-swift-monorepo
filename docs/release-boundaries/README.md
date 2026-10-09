@@ -37,7 +37,7 @@ Reconcile both main and develop before selecting import SHAs. Braze main require
 
 Keep production develop refs unchanged during initial migration. Version consumers retain immutable releases. Main consumers must receive only approved exports. Frozen-develop consumers retain the old snapshot; deleting those branches is a later compatibility decision. Public repository inspection cannot establish every customer's private dependency selection.
 
-The experimental publisher has a fixed experimental destination allowlist. Production use requires a separately reviewed inventory, existing-history bootstrap, graph inputs, and writer permissions. The existing organization PR rule is not bypassed by Contents write. Select an explicitly approved App bypass or reviewed publication update route before activation.
+The experimental publisher writes only to the reviewed destination allowlist (`release/allowlist.json`). Production use requires a separately reviewed inventory, existing-history bootstrap, graph inputs, and writer permissions. The existing organization PR rule is not bypassed by Contents write. Select an explicitly approved App bypass or reviewed publication update route before activation.
 
 ## References
 

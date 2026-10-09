@@ -2,7 +2,8 @@
 
 Edit canonical source here. Do not edit generated publication repositories.
 Use short `feat:`, `fix:`, or internal Conventional Commit subjects with the SDK ticket key.
-Run the Python tests and refresh shared-source fingerprints before review.
+Run `make sync` and `make check test` before review (see the developer path in README.md).
+Add packages with `make new-integration` or `make import-integration`, never by hand.
 Keep independent changes in separate commits.
-The SDK team must assign the actual CODEOWNERS team during approved repository setup.
-Do not guess a team handle or enable production publication from this fixture.
+`.github/CODEOWNERS` assigns every path to `@rudderlabs/sdk_team`, so sdk_team reviews every change, including `release/allowlist.json`.
+Do not enable production publication from this fixture.

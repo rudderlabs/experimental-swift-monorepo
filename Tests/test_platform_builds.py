@@ -1,6 +1,7 @@
 """Release-time platform builds, with only swift and xcodebuild modeled."""
 import os
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -11,9 +12,10 @@ os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import common
-from common import NAMES, git, write_json
+from common import allowlist, git, write_json
 from publish import platform_builds, publish
 
+NAMES = allowlist()
 FOUR = ["iOS 15", "macOS 12", "tvOS 15", "watchOS 8"]
 
 
@@ -62,12 +64,14 @@ class PlatformBuildTests(unittest.TestCase):
         common.run(["git", "init", "--bare", "--initial-branch=main", remote])
         write_json(self.root / "source/release/packages.json", {"schemaVersion": 1, "packages": {
             "sprig": {"repository": NAMES["sprig"], "target": "Kit", "platforms": FOUR}}})
+        shutil.copyfile(common.ROOT / "release/allowlist.json", self.root / "source/release/allowlist.json")
         def export(key, version, stage, root):
             stage.mkdir(parents=True)
             (stage / "Package.swift").write_text("// swift-tools-version: 5.9\n")
             return {"version": version, "sourceCommit": "a" * 40}
         self.failing = "generic/platform=tvOS"
         with patch("publish.export", side_effect=export), patch("publish.mirrors"), \
+             patch("publish.source_commit", return_value="a" * 40), \
              patch("publish.run", side_effect=self.run_command):
             with self.assertRaisesRegex(RuntimeError, r"Release build failed for tvOS 15 \(generic/platform=tvOS\)"):
                 publish("sprig", "1.0.0", remotes, root=self.root / "source")

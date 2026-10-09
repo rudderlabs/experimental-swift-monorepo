@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "owner": "rudderlabs",
+  "repositories": {
+    "sdk": "experimental-rudder-sdk-swift",
+    "sprig": "experimental-integration-swift-sprig",
+    "firebase": "experimental-integration-swift-firebase"
+  }
+}
