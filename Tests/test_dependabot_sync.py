@@ -45,8 +45,8 @@ class WorkflowTests(unittest.TestCase):
     def test_runs_only_for_dependabot_manifest_changes_and_repo_scripts(self):
         text = WORKFLOW.read_text()
         self.assertIn("    paths: [Package.swift]\n", text)
-        self.assertIn("if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'",
-                      text)
+        self.assertIn("if: github.event.pull_request.user.login == 'dependabot[bot]'\n", text)
+        self.assertNotIn("if: github.actor", text)  # spoofable (zizmor bot-conditions)
         self.assertIn("private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}", text)
         self.assertIn("client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}", text)
         self.assertIn("step-security/harden-runner@", text)

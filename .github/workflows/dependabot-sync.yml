@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 jobs:
   sync:
-    # The release bot's own push has a different actor, so it does not run this again.
-    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
+    # The PR author cannot be spoofed (github.actor can). A re-run after the bot's own push finds no change.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: macos-15
     steps:
       - name: Harden the runner (Audit all outbound calls)
