@@ -7,6 +7,8 @@ import tempfile
 
 from common import load, run
 
+WAITING = ('awaiting_review', 'awaiting_dependency', 'awaiting_takeover')
+
 
 def summarize(plan, jobs):
     packages = {}
@@ -21,7 +23,7 @@ def summarize(plan, jobs):
                     and outputs.get('tag') == expected['version']
                     and bool(re.fullmatch('[0-9a-f]{40}', outputs.get('publicationCommit', ''))))
         waiting = (job.get('result') == 'success'
-                   and outputs.get('status') in ('awaiting_review', 'awaiting_dependency')
+                   and outputs.get('status') in WAITING
                    and all(outputs.get(field) == value and value for field, value in expected.items()))
         state = 'published' if verified else outputs['status'] if waiting else 'incomplete'
         packages[key] = {**expected, 'status': state,

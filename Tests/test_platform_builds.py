@@ -71,6 +71,7 @@ class PlatformBuildTests(unittest.TestCase):
             return {"version": version, "sourceCommit": "a" * 40}
         self.failing = "generic/platform=tvOS"
         with patch("publish.export", side_effect=export), patch("publish.mirrors"), \
+             patch("publish.source_commit", return_value="a" * 40), \
              patch("publish.run", side_effect=self.run_command):
             with self.assertRaisesRegex(RuntimeError, r"Release build failed for tvOS 15 \(generic/platform=tvOS\)"):
                 publish("sprig", "1.0.0", remotes, root=self.root / "source")

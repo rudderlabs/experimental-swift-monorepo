@@ -1,0 +1,58 @@
+name: Anchor package
+# A plain git tag where an imported package starts (D21). No GitHub Release, so nothing is queued or published.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package key from release/allowlist.json and release/packages.json
+        type: string
+        required: true
+      version:
+        description: Version at the import commit (X.Y.Z)
+        type: string
+        required: true
+      sha:
+        description: Full import merge commit SHA on main
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: experimental-anchor
+  cancel-in-progress: false
+jobs:
+  anchor:
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: experimental-spm-release
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate package, version and main commit
+        id: anchor
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          SHA: ${{ inputs.sha }}
+        run: python3 scripts/anchor.py "$PACKAGE" "$VERSION" "$SHA"
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: experimental-swift-monorepo
+          permission-contents: write
+      - name: Create the plain tag (no GitHub Release)
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TAG: ${{ steps.anchor.outputs.tag }}
+          SHA: ${{ inputs.sha }}
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$SHA"

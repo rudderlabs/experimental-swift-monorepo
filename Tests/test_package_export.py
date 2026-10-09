@@ -1,4 +1,5 @@
 """Generated manifests for real package shapes, from a tiny SwiftPM fixture."""
+import hashlib
 import os
 import json
 from pathlib import Path
@@ -13,7 +14,7 @@ os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from common import ROOT, commit, git, inventory, load, write_json
 from dependency_policy import markers, requirement, sync_inventory
-from project import export
+from project import TRANSFORMS, export
 
 VENDOR = "https://example.invalid/vendor-sdk.git"
 MANIFEST = f'''// swift-tools-version: 5.9
@@ -94,6 +95,38 @@ class PackageExportTests(unittest.TestCase):
             self.assertEqual((output / "Sources/Core/Resources" / name).read_bytes(), source.read_bytes())
         copied = [f["output"] for f in load(output / ".publication.json")["copiedFiles"]]
         self.assertIn("Sources/Core/Resources/Nested/config.json", copied)
+
+    def test_generated_contributing_codeowners_and_readme_block_are_hashed(self):
+        output, _ = self.export("sprig")
+        provenance = load(output / ".publication.json")
+        issues = "https://github.com/rudderlabs/experimental-swift-monorepo/issues/new/choose"
+        self.assertEqual((output / ".github/CODEOWNERS").read_text(), "* @rudderlabs/sdk_team\n")
+        self.assertIn(issues, (output / "CONTRIBUTING.md").read_text())
+        self.assertIn("`sprig`", (output / "CONTRIBUTING.md").read_text())
+        readme = (output / "README.md").read_text()
+        self.assertTrue(readme.startswith("# Fixture\n\n## Report issues / contribute\n"))
+        self.assertIn(f"[Report an issue or contribute]({issues})", readme)
+        for path in ("CONTRIBUTING.md", ".github/CODEOWNERS", "README.md"):
+            self.assertEqual(provenance["fileHashes"][path], hashlib.sha256((output / path).read_bytes()).hexdigest())
+        self.assertEqual([p for p in provenance["fileHashes"] if p.startswith(".github/")], [".github/CODEOWNERS"])
+        self.assertFalse((output / ".github/workflows").exists())
+
+    def test_every_exported_file_has_one_transform(self):
+        for key in ("sdk", "sprig"):
+            output, _ = self.export(key)
+            provenance = load(output / ".publication.json")
+            transforms = {f["output"]: f["transform"] for f in provenance["copiedFiles"]}
+            self.assertEqual(len(transforms), len(provenance["copiedFiles"]))
+            self.assertEqual(set(transforms), set(provenance["fileHashes"]))
+            self.assertLessEqual(set(transforms.values()), set(TRANSFORMS))
+            for path in ("Package.swift", "README.md", "CONTRIBUTING.md", ".github/CODEOWNERS", "VERSION", ".gitignore"):
+                self.assertEqual(transforms[path], "generated")
+            for path in ("LICENSE", "CHANGELOG.md"):
+                self.assertEqual(transforms[path], "copy")
+            sources = [f for f in provenance["copiedFiles"] if f["output"].startswith("Sources/")]
+            self.assertTrue(sources and all(f["transform"] == "copy" for f in sources))
+            for entry in sources:
+                self.assertEqual((output / entry["output"]).read_bytes(), (self.root / entry["source"]).read_bytes())
 
     def test_resource_inventory_compares_relative_paths(self):
         self.edit(lambda p: p["sdk"].update(resources=["Resources/PrivacyInfo.xcprivacy"]))

@@ -1,4 +1,5 @@
-name: Complete reviewed experimental publications
+name: Recover (complete reviewed experimental publications)
+# The Recover button (D20): manual, no inputs, every run scans all packages.
 on:
   workflow_dispatch:
 permissions:
@@ -28,10 +29,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/publication_queue.py
+      - name: Fail on broken items after the others are queued
+        if: steps.plan.outputs.broken == 'true'
+        run: |
+          echo "Some items are incomplete; see the annotations. The other packages still complete."
+          exit 1
   complete:
     name: publish (${{ matrix.package }})
     needs: pending
-    if: needs.pending.outputs.pending == 'true'
+    # A broken item fails the pending job but never blocks the others.
+    if: ${{ !cancelled() && needs.pending.outputs.pending == 'true' }}
     strategy:
       fail-fast: false
       max-parallel: 1

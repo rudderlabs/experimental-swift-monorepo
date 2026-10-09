@@ -45,6 +45,12 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, indent=2, sort_keys=True) + "\n")
 
 
+def text(name, **values):
+    """Every release, PR and commit text comes from release/texts.json in the trusted checkout."""
+    texts = load(ROOT / "release/texts.json")
+    return texts[name].format(ticket=texts["ticket"], **values)
+
+
 def allowlist(root=ROOT):
     """Reviewed write targets (package key -> repository under OWNER). Keys without a package are reserved."""
     data = load(root / "release/allowlist.json")

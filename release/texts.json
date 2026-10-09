@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "ticket": "[SDK-5388](https://linear.app/rudderstack/issue/SDK-5388)",
+  "commit": "chore: sdk-5388 publish experimental {package} {version}",
+  "takeoverCommit": "chore: sdk-5388 take over experimental {package} {version}",
+  "pullRequestTitle": "chore: publish experimental {package} {version}",
+  "takeoverPullRequestTitle": "chore: take over experimental {package} {version}",
+  "pullRequestBody": "Publish experimental {package} {version} from source commit `{source}`.\n\nThe generated package passed an anonymous Swift build. Review the complete export and provenance. After merge, press Recover: the central publication workflow verifies the exact merge commit, creates the immutable SwiftPM version tag, and creates the GitHub Release. An open PR does not publish a version.\n\n{removed}{ticket}\n",
+  "bootstrapPullRequestBody": "Bootstrap experimental {package} {version} from source commit `{source}`. This replaces the README-only repository with the generated package.\n\nThe generated package passed an anonymous Swift build. After merge, press Recover to create the version tag and the GitHub Release.\n\n{removed}{ticket}\n",
+  "takeoverPullRequestBody": "Take over experimental {package} at its existing tag `{version}` from source commit `{source}`. No tag or GitHub Release is created; `{version}` stays where it is.\n\nChecked before this PR was opened:\n- `Sources/` is byte-identical to tag `{version}`; only a missing `Version.swift` may be added.\n- `Package.swift` is semantically equal (`swift package dump-package`: products, targets, platforms, dependency requirements).\n\nExpected differences (anything else is a stop):\n- `Package.swift` text differs (formatting, order, comments): it is generated from the inventory.\n- No `testTarget`: tests stay in the monorepo.\n- `LICENSE.md` is replaced by the generated `LICENSE` (or the other way round).\n- `Tests/`, `Example/`, xcodeproj, `Package.resolved`, `CODEOWNERS` and the rest of `.github/` are removed; the generated `.github/CODEOWNERS`, CONTRIBUTING and README block are added.\n- Integrations depend on `experimental-rudder-sdk-swift` instead of `rudder-sdk-swift` (same requirement; experiment only).\n\n{removed}{ticket}\n",
+  "removedFiles": "Removed files:\n{files}\n\n",
+  "releaseTitle": "Experimental {version}",
+  "releaseBody": "Temporary unsupported experiment.\n\nSource: {source}\nPublication: {publication}\n"
+}
