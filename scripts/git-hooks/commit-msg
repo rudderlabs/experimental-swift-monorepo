@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# ──────────────────────────────────────────────────────────────
+# commit-msg hook (ported from rudder-sdk-swift)
+# Validates that commit messages follow Conventional Commits format,
+# with the same rules as the PR title check (MEMORY §12): the squash
+# commit on main is the PR title, so local commits use the same rules.
+# Runs after the developer types the message, before the commit is saved.
+#
+# Git passes the path to the commit message file as $1.
+# ──────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────
+# Run global hooks first (Gitleaks, etc.) — DO NOT REMOVE
+# Our local core.hooksPath overrides the global one, so we must
+# manually invoke it to keep Gitleaks and other global hooks alive.
+# ──────────────────────────────────────────────────────────────
+GLOBAL_HOOKS_PATH=$(git config --global --get core.hooksPath 2>/dev/null)
+if [ -n "$GLOBAL_HOOKS_PATH" ] && [ -x "$GLOBAL_HOOKS_PATH/commit-msg" ]; then
+    "$GLOBAL_HOOKS_PATH/commit-msg" "$@" || exit $?
+fi
+
+commit_message_file="$1"
+
+# Extract the subject line: first non-empty, non-comment line.
+# This correctly handles multi-line messages (subject + body) and
+# editor template comments (lines starting with #).
+commit_subject=$(grep -v '^#' "$commit_message_file" | grep -v '^[[:space:]]*$' | head -1)
+
+# Block empty or whitespace-only messages
+if [[ -z "$commit_subject" ]]; then
+    echo "Error: Commit message cannot be empty." >&2
+    exit 1
+fi
+
+# Merge and revert commits made by git keep git's own subject.
+if [[ $commit_subject =~ ^Merge\  ]] || [[ $commit_subject =~ ^Revert\ \".+\"$ ]]; then
+    exit 0
+fi
+
+types="feat|fix|refactor|perf|style|test|docs|chore|build|ci|revert"
+# type, optional lowercase (scope) or (scope,scope), optional !, colon, one space, description
+valid_commit_regex="^($types)(\([a-z0-9][a-z0-9._/-]*(,[a-z0-9][a-z0-9._/-]*)*\))?!?: (.+)$"
+max_length=100
+
+problem=""
+if [[ ! $commit_subject =~ $valid_commit_regex ]]; then
+    problem="Invalid commit message format."
+else
+    description="${BASH_REMATCH[4]}"
+    if [[ $description =~ ^[[:space:]] ]]; then
+        problem="Use exactly one space after the colon."
+    elif [[ $description =~ ^[[:upper:]] ]]; then
+        problem="The description must not start with a capital letter."
+    elif [[ $description == *. ]]; then
+        problem="The description must not end with a period."
+    elif [ ${#commit_subject} -gt $max_length ]; then
+        problem="The first line is ${#commit_subject} characters; the maximum is $max_length."
+    fi
+fi
+
+if [ -n "$problem" ]; then
+    echo ""
+    echo "Error: $problem"
+    echo ""
+    echo "  Your message:  $commit_subject"
+    echo ""
+    echo "  Expected format: <type>(<optional scope>)<optional !>: <description>"
+    echo "  Allowed types:   feat | fix | refactor | perf | style | test | docs | chore | build | ci | revert"
+    echo "  Description:     lowercase start, no trailing period; first line at most $max_length characters"
+    echo ""
+    echo "  Examples:"
+    echo "    fix(sprig): skip empty traits when identifying users"
+    echo "    feat(sdk)!: remove the deprecated flush API"
+    echo "    docs: explain make prepare"
+    echo ""
+    exit 1
+fi

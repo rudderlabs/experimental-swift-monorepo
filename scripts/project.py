@@ -113,14 +113,15 @@ def template(name, key):
         issues=f"https://github.com/{OWNER}/{SOURCE_NAME}/issues/new/choose")
 
 
-def export(key, version, destination, root=ROOT):
+def export(key, version, destination, root=ROOT, preview=False):
+    """Export one package. `preview` (PR CI) allows a package that has no Release Please entry yet."""
     if not SEMVER.fullmatch(version):
         raise ValueError("The experiment accepts stable X.Y.Z versions only")
     packages = inventory(root)
     package = packages[key]
     if version != (root / package["path"] / "version.txt").read_text().strip():
         raise ValueError("Requested version differs from version.txt")
-    if load(root / ".release-please-manifest.json")[package["path"]] != version:
+    if not preview and load(root / ".release-please-manifest.json").get(package["path"]) != version:
         raise ValueError("Release Please manifest version differs")
     constants = (root / package["path"] / "Sources" / package["target"] / "Version.swift").read_text()
     if f'current = "{version}"' not in constants:

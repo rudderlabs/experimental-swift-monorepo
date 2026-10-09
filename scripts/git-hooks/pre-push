@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# ──────────────────────────────────────────────────────────────
+# pre-push hook (ported from rudder-sdk-swift)
+# Validates branch name, then runs `make test` (the Python tests and
+# the iOS Simulator package tests, the same as CI) before allowing a
+# push to the remote.
+#
+# NOTE: The test step is skipped when running from a GUI git client
+# (e.g. SourceTree) due to a macOS Gatekeeper restriction that blocks
+# Swift Package Manager from parsing Package.swift in non-interactive
+# contexts. CI enforces these checks for all pushes regardless.
+# ──────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────
+# Run global hooks first (Gitleaks, etc.) — DO NOT REMOVE
+# Our local core.hooksPath overrides the global one, so we must
+# manually invoke it to keep Gitleaks and other global hooks alive.
+# ──────────────────────────────────────────────────────────────
+GLOBAL_HOOKS_PATH=$(git config --global --get core.hooksPath 2>/dev/null)
+if [ -n "$GLOBAL_HOOKS_PATH" ] && [ -x "$GLOBAL_HOOKS_PATH/pre-push" ]; then
+    # The global hook reads the same pushed refs from stdin; keep a copy for ours.
+    PUSHED_REFS=$(cat)
+    "$GLOBAL_HOOKS_PATH/pre-push" "$@" <<< "$PUSHED_REFS" || exit $?
+    exec <<< "$PUSHED_REFS"
+fi
+
+echo "Running pre-push checks..."
+echo ""
+
+# ── 1. Validate branch name ──────────────────────────────────
+
+# git passes each pushed ref on stdin as:
+#   <local-ref> <local-sha> <remote-ref> <remote-sha>
+# Branch types are the commit types plus hotfix/ and release/ (MEMORY §12).
+# `main` is allowed as-is, like in rudder-sdk-swift; GitHub rejects direct pushes to it.
+valid_branch_regex="^(feat|fix|refactor|perf|style|test|docs|chore|build|ci|revert|hotfix|release)\/[a-zA-Z0-9._-]+$|^main$"
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Skip non-branch refs (tags, delete operations, etc.)
+    if [[ "$local_ref" != refs/heads/* ]]; then
+        continue
+    fi
+
+    branch="${local_ref#refs/heads/}"
+
+    if [[ ! $branch =~ $valid_branch_regex ]]; then
+        echo "[ERROR] Invalid branch name: '$branch'"
+        echo ""
+        echo "  Branch names must follow this format:"
+        echo "    <type>/<description>"
+        echo ""
+        echo "  Allowed types: feat | fix | refactor | perf | style | test | docs | chore | build | ci | revert | hotfix | release"
+        echo ""
+        echo "  Examples:"
+        echo "    feat/sdk-5388-developer-setup"
+        echo "    fix/sprig-empty-traits"
+        echo ""
+        echo "  Rename with: git branch -m $branch <type>/<description>"
+        echo ""
+        exit 1
+    fi
+
+    echo "[SUCCESS] Branch name validation passed: '$branch'"
+done
+
+# ── 2. Tests (Terminal only) ─────────────────────────────────
+
+# [ -t 1 ] checks if stdout is connected to an interactive terminal.
+# GUI git clients (SourceTree, Fork, etc.) are non-interactive, and
+# macOS Gatekeeper blocks Swift Package Manager in that context.
+# CI (GitHub Actions) enforces these checks.
+if [ ! -t 1 ]; then
+    echo "[INFO] Non-interactive context detected (GUI git client)."
+    echo "       Skipping tests — CI will enforce them."
+    echo ""
+    echo "All pre-push checks passed. Ready to push."
+    exit 0
+fi
+
+echo ""
+echo "[INFO] Running tests (make test)..."
+if ! make -s -C "$(git rev-parse --show-toplevel)" test; then
+    echo ""
+    echo "[ERROR] Tests failed. Please fix failing tests before pushing."
+    exit 1
+fi
+echo "[SUCCESS] All tests passed."
+
+echo ""
+echo "All pre-push checks passed. Ready to push."

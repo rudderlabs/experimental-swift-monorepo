@@ -1,0 +1,44 @@
+name: PR title
+# The squash commit on main is the PR title (D23), so the title must be a Conventional Commit (MEMORY §12).
+# Separate from ci.yml so a title edit re-runs only these jobs. `pr-title` is a required check;
+# `scope-hint` only warns (D16). Same action and pin as rudder-sdk-swift's pr-title-validation.yml.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, edited, synchronize]
+permissions:
+  contents: read
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - name: Validate PR title
+        uses: rudderlabs/github-action-check-pr-title@0a83071336f7d6417249629f67a64530fcecda2e # v1.0.11
+
+  scope-hint:
+    # Warning only: a scope that names a package the PR does not touch gets an annotation, never a failure.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Check the title scope
+        run: python3 scripts/package_ci.py scope-hint --title "$TITLE" --base "$BASE_SHA" --head "$HEAD_SHA"
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
