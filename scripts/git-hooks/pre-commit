@@ -1,0 +1,143 @@
+#!/bin/bash
+
+# ──────────────────────────────────────────────────────────────
+# pre-commit hook (ported from rudder-sdk-swift)
+# 1. When the commit stages Package.swift, release/packages.json,
+#    release/allowlist.json or Shared/**, runs the matching sync and
+#    stages the regenerated markers and generated files into the SAME
+#    commit (D15). Other commits run no sync.
+# 2. Runs SwiftLint on staged Swift files (if SwiftLint is installed).
+#
+# NOTE: This hook intentionally does NOT use `set -e`.
+# `set -e` would cause the script to exit immediately on any error,
+# potentially before reaching the global hooks chaining block at the
+# top. If that block were skipped, Gitleaks (or any other global hook)
+# would silently stop running. Explicit exit code checks are used
+# instead to ensure the global hooks always execute.
+# ──────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────
+# Run global hooks first (Gitleaks, etc.) — DO NOT REMOVE
+# Our local core.hooksPath overrides the global one, so we must
+# manually invoke it to keep Gitleaks and other global hooks alive.
+# ──────────────────────────────────────────────────────────────
+GLOBAL_HOOKS_PATH=$(git config --global --get core.hooksPath 2>/dev/null)
+if [ -n "$GLOBAL_HOOKS_PATH" ] && [ -x "$GLOBAL_HOOKS_PATH/pre-commit" ]; then
+    "$GLOBAL_HOOKS_PATH/pre-commit" "$@" || exit $?
+fi
+
+echo "Running pre-commit checks..."
+cd "$(git rev-parse --show-toplevel)" || exit 1
+PYTHON=${PYTHON:-python3}
+
+# ── 1. Release markers ───────────────────────────────────────
+
+staged() {
+    git diff --cached --name-only --diff-filter=ACMRD -- "$@" | grep -q .
+}
+
+# Files that differ from the index (modified or untracked), one per line.
+dirty() {
+    { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u
+}
+
+manifest=0; packages=0; allowlist=0; shared=0
+staged Package.swift && manifest=1
+staged release/packages.json && packages=1
+staged release/allowlist.json && allowlist=1
+staged 'Shared/' && shared=1
+
+if [ $((manifest + packages + allowlist + shared)) -gt 0 ]; then
+    before=$(dirty)
+    SYNC_FAILED=0
+    if [ $manifest -eq 1 ] || [ $packages -eq 1 ]; then
+        echo "[INFO] Package.swift or release/packages.json is staged: syncing vendor metadata and markers..."
+        "$PYTHON" scripts/dependency_policy.py sync > /dev/null || SYNC_FAILED=1
+    fi
+    if [ $manifest -eq 1 ] || [ $packages -eq 1 ] || [ $shared -eq 1 ]; then
+        echo "[INFO] Syncing shared-source markers..."
+        "$PYTHON" scripts/release_plan.py sync-shared > /dev/null || SYNC_FAILED=1
+    fi
+    if [ $packages -eq 1 ] || [ $allowlist -eq 1 ]; then
+        echo "[INFO] Regenerating GitHub files from the package list..."
+        "$PYTHON" scripts/generate_github.py > /dev/null || SYNC_FAILED=1
+    fi
+    if [ $SYNC_FAILED -ne 0 ]; then
+        echo ""
+        echo "[ERROR] The release marker sync failed (see above). Fix it, or run 'make sync' to see the error."
+        exit 1
+    fi
+
+    # Stage what the sync changed, plus marker and generated files that were
+    # already out of date in the working tree (for example after a manual `make sync`).
+    added=$( { comm -13 <(echo "$before") <(dirty)
+               dirty | grep -E '(^|/)(dependency-requirements|shared-source)\.json$|^\.github/(ISSUE_TEMPLATE/|labeler\.yml$|labels\.json$)'
+             } | grep . | sort -u)
+    if [ -n "$added" ]; then
+        echo "$added" | tr '\n' '\0' | xargs -0 git add -A -- || exit 1
+        echo "[SUCCESS] Added to this commit:"
+        echo "$added" | sed 's/^/    /'
+    else
+        echo "[INFO] Release markers are already up to date."
+    fi
+fi
+
+# ── 2. SwiftLint on staged Swift files ───────────────────────
+
+# Enumerate staged Swift files once into a temp list (null-delimited).
+# -z produces NUL-separated paths — safe for filenames with spaces, newlines,
+# or special characters. ACMR includes renames so the new path is also linted.
+TMP_LIST=$(mktemp)
+git diff --cached -z --name-only --diff-filter=ACMR -- '*.swift' > "$TMP_LIST"
+
+if [ -s "$TMP_LIST" ]; then
+    # Check if SwiftLint is installed on this machine
+    if command -v swiftlint &> /dev/null; then
+        echo "[INFO] Running SwiftLint on staged files..."
+
+        # Lint the staged index content, not the working tree.
+        # For each staged file, extract the blob from the index via
+        # `git show ":$file"` into a temp file that mirrors the original
+        # directory structure so SwiftLint error output shows readable paths.
+        # The temp tree gets every committed .swiftlint.yml (root and nested),
+        # so the same `excluded` paths and rules apply as in CI.
+        LINT_FAILED=0
+        TMP_DIR=$(cd "$(mktemp -d)" && pwd -P)
+        while IFS= read -r -d '' config; do
+            mkdir -p "$TMP_DIR/$(dirname "$config")"
+            git show ":$config" > "$TMP_DIR/$config"
+        done < <(git ls-files -z -- '.swiftlint.yml' '**/.swiftlint.yml')
+
+        while IFS= read -r -d '' file; do
+            tmp_file="$TMP_DIR/$file"
+            mkdir -p "$(dirname "$tmp_file")"
+            git show ":$file" > "$tmp_file"
+        done < "$TMP_LIST"
+        rm -f "$TMP_LIST"
+
+        output=$(cd "$TMP_DIR" && swiftlint lint --quiet --strict 2>&1)
+        status=$?
+        if [ $status -ne 0 ] && ! echo "$output" | grep -q "No lintable files found"; then
+            echo "${output//$TMP_DIR\//}"
+            LINT_FAILED=1
+        fi
+
+        rm -rf "$TMP_DIR"
+
+        if [ $LINT_FAILED -ne 0 ]; then
+            echo ""
+            echo "[ERROR] SwiftLint found issues. Please fix them before committing."
+            echo "        Run 'make lint' to see all issues."
+            exit 1
+        fi
+
+        echo "[SUCCESS] SwiftLint checks passed."
+    else
+        rm -f "$TMP_LIST"
+        echo "[WARNING] SwiftLint is not installed. Skipping lint checks."
+        echo "          Install it with: brew install swiftlint"
+    fi
+else
+    rm -f "$TMP_LIST"
+    echo "[INFO] No staged Swift source files to lint. Skipping."
+fi

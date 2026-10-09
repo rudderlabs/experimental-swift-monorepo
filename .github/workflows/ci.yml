@@ -1,4 +1,7 @@
 name: Validate experimental source
+# PR and main checks (D22: iOS Simulator only; other platforms build at release time in publish.py).
+# `ci-ok` is the only required check: the matrix job names change as packages are added.
+# Every command lives in scripts/ (package_ci.py), so `make test` and `make lint` run the same commands.
 on:
   pull_request:
     branches: [main]
@@ -6,8 +9,30 @@ on:
     branches: [main]
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
-  source:
+  packages:
+    # The package keys for the matrices; `[]` (no packages yet) skips test and export.
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.matrix.outputs.packages }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - id: matrix
+        run: echo "packages=$(python3 scripts/package_ci.py matrix)" >> "$GITHUB_OUTPUT"
+
+  policy:
+    # macOS: dependency_policy.py needs `swift package dump-package`, and the RUN_SWIFT_BUILD_TESTS
+    # unit tests run `xcodebuild` platform builds (the release-time check), which need Xcode.
     runs-on: macos-15
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -18,12 +43,102 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - run: python3 scripts/release_plan.py sync-shared --check
-      - run: python3 scripts/dependency_policy.py check
-      - run: python3 scripts/check_inventory.py
+      - name: Policy checks (markers, inventory, generated files, action pins)
+        id: check
+        run: make check
+      - name: Explain a stale marker
+        if: failure() && steps.check.outcome == 'failure'
+        run: echo "::error::Run make sync (or make prepare to let the pre-commit hook do it) and commit the result"
       - name: Install git-filter-repo (history import test)
         run: HOMEBREW_NO_AUTO_UPDATE=1 brew install git-filter-repo
-      - run: python3 -m unittest discover -s Tests -p 'test_*.py'
+      - name: Python unit tests
+        run: python3 -m unittest discover -s Tests -p 'test_*.py'
         env:
           RUN_SWIFT_BUILD_TESTS: "1"
-      - run: python3 -m compileall -q scripts
+
+  lint:
+    runs-on: macos-15
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Install SwiftLint
+        run: command -v swiftlint || HOMEBREW_NO_AUTO_UPDATE=1 brew install swiftlint
+      # The root .swiftlint.yml excludes Tests/ (fixtures are test data), Examples/ and manifests.
+      # With no lintable files (no packages yet) this passes.
+      - name: SwiftLint
+        run: python3 scripts/package_ci.py lint --all --strict --reporter github-actions-logging
+
+  test:
+    name: test (${{ matrix.package }})
+    needs: packages
+    if: needs.packages.outputs.packages != '[]'
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.packages.outputs.packages) }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      # xcodebuild test on the first available iPhone of the newest iOS runtime (scripts/ci/pick-simulator.sh).
+      - name: iOS Simulator tests
+        run: python3 scripts/package_ci.py test --package "$PACKAGE"
+        env:
+          PACKAGE: ${{ matrix.package }}
+
+  export:
+    name: export (${{ matrix.package }})
+    needs: packages
+    if: needs.packages.outputs.packages != '[]'
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.packages.outputs.packages) }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      # Export to a temporary folder, check the generated manifest, build it for generic iOS.
+      - name: Export check
+        run: python3 scripts/package_ci.py export-check --package "$PACKAGE"
+        env:
+          PACKAGE: ${{ matrix.package }}
+
+  ci-ok:
+    # The only required status check. Skipped matrix jobs (no packages) pass; failed or cancelled jobs fail.
+    if: always()
+    needs: [packages, policy, lint, test, export]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: All needed jobs passed
+        run: python3 scripts/package_ci.py ci-ok
+        env:
+          NEEDS: ${{ toJSON(needs) }}
