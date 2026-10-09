@@ -10,7 +10,7 @@ os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # ignore personal git settings suc
 os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from common import ROOT, anonymous_env, commit, git, run, swift_options, write_json
+from common import ROOT, anonymous_env, commit, git, load, run, swift_options, write_json
 from dependency_policy import sync_inventory
 from project import export, strip_imports, wide_access
 from release_plan import shared_markers
@@ -82,6 +82,57 @@ class ImportStripTests(unittest.TestCase):
                          "import Foundation\r\nlet x = 1\r\n")
 
 
+def vendored_fixture(base):
+    """Two integrations vendor one `package` helper; returns the committed source root and its markers."""
+    root = base / "source"
+    files = {"Package.swift": SOURCE, "LICENSE": "MIT\n", ".gitignore": ".build/\n",
+             ".gitattributes": "*.swift whitespace=cr-at-eol\n",
+             "Shared/TextShared/Normalizer.swift":
+                 "package enum Normalizer {\n    package static func normalize(_ s: String) -> String "
+                 "{ s.lowercased() }\n}\n"}
+    imports = {"A": "@_exported import TextShared\n", "B": "  import enum TextShared.Normalizer\r\n"}
+    for name, line in imports.items():
+        path = f"Integrations/{name}"
+        files.update({f"{path}/version.txt": "1.0.0\n", f"{path}/README.md": "# Kit\n",
+                      f"{path}/CHANGELOG.md": "# Changelog\n",
+                      f"{path}/Sources/Kit{name}/Version.swift":
+                          f'public enum Kit{name}Version {{ public static let current = "1.0.0" }}\n',
+                      f"{path}/Sources/Kit{name}/Kit{name}.swift":
+                          f"{line}public enum Kit{name} {{\n    public static func track(_ s: String) -> String "
+                          f'{{ Normalizer.normalize(s) + "-{name.lower()}" }}\n}}\n'})
+    files = {"source/" + path: content for path, content in files.items()}
+    files["Consumer/Package.swift"] = CONSUMER
+    files["Consumer/Sources/Consumer/main.swift"] = (
+        'import KitA\nimport KitB\nprecondition(KitA.track("X") == "x-a" && KitB.track("Y") == "y-b")\n')
+    for path, content in files.items():
+        (base / path).parent.mkdir(parents=True, exist_ok=True)
+        (base / path).write_bytes(content.encode())
+    write_json(root / ".release-please-manifest.json", {"Integrations/A": "1.0.0", "Integrations/B": "1.0.0"})
+    write_json(root / "release/packages.json", {"schemaVersion": 1, "packages": {
+        key: {"path": f"Integrations/{name}", "target": f"Kit{name}", "repository": repository,
+              "policies": {"TextShared": {"mode": "vendor"}}, "platforms": ["macOS 12"], "toolsVersion": "5.9"}
+        for key, name, repository in [("sprig", "A", "experimental-integration-swift-sprig"),
+                                      ("firebase", "B", "experimental-integration-swift-firebase")]}})
+    shutil.copyfile(ROOT / "release/allowlist.json", root / "release/allowlist.json")
+    sync_inventory(root)
+    selected = shared_markers(root)
+    git(root, "init", "--initial-branch=main")
+    commit(root, "test: two integrations vendor one package helper")
+    return root, selected
+
+
+class VendoredTransformTests(unittest.TestCase):
+    def test_vendored_and_stripped_files_are_marked_for_reverse_sync(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            export("sprig", "1.0.0", base / "KitA", vendored_fixture(base)[0])
+            transforms = {f["output"]: f["transform"] for f in load(base / "KitA/.publication.json")["copiedFiles"]}
+            self.assertEqual(transforms["Sources/KitA/Vendored/TextShared/Normalizer.swift"], "vendored-strip-import")
+            self.assertEqual(transforms["Sources/KitA/KitA.swift"], "vendored-strip-import")
+            self.assertEqual(transforms["Sources/KitA/Version.swift"], "copy")
+            self.assertEqual(transforms["Package.swift"], "generated")
+
+
 @unittest.skipUnless(os.environ.get("RUN_SWIFT_BUILD_TESTS") == "1", "set RUN_SWIFT_BUILD_TESTS=1 to run swift build")
 class VendoredBuildTests(unittest.TestCase):
     """Two exports vendor the same `package` helper; one consumer links both without ambiguity."""
@@ -90,40 +141,8 @@ class VendoredBuildTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         base = Path(temp.name)
-        root = base / "source"
-        files = {"Package.swift": SOURCE, "LICENSE": "MIT\n", ".gitignore": ".build/\n",
-                 ".gitattributes": "*.swift whitespace=cr-at-eol\n",
-                 "Shared/TextShared/Normalizer.swift":
-                     "package enum Normalizer {\n    package static func normalize(_ s: String) -> String "
-                     "{ s.lowercased() }\n}\n"}
-        imports = {"A": "@_exported import TextShared\n", "B": "  import enum TextShared.Normalizer\r\n"}
-        for name, line in imports.items():
-            path = f"Integrations/{name}"
-            files.update({f"{path}/version.txt": "1.0.0\n", f"{path}/README.md": "# Kit\n",
-                          f"{path}/CHANGELOG.md": "# Changelog\n",
-                          f"{path}/Sources/Kit{name}/Version.swift":
-                              f'public enum Kit{name}Version {{ public static let current = "1.0.0" }}\n',
-                          f"{path}/Sources/Kit{name}/Kit{name}.swift":
-                              f"{line}public enum Kit{name} {{\n    public static func track(_ s: String) -> String "
-                              f'{{ Normalizer.normalize(s) + "-{name.lower()}" }}\n}}\n'})
-        files = {"source/" + path: content for path, content in files.items()}
-        files["Consumer/Package.swift"] = CONSUMER
-        files["Consumer/Sources/Consumer/main.swift"] = (
-            'import KitA\nimport KitB\nprecondition(KitA.track("X") == "x-a" && KitB.track("Y") == "y-b")\n')
-        for path, content in files.items():
-            (base / path).parent.mkdir(parents=True, exist_ok=True)
-            (base / path).write_bytes(content.encode())
-        write_json(root / ".release-please-manifest.json", {"Integrations/A": "1.0.0", "Integrations/B": "1.0.0"})
-        write_json(root / "release/packages.json", {"schemaVersion": 1, "packages": {
-            key: {"path": f"Integrations/{name}", "target": f"Kit{name}", "repository": repository,
-                  "policies": {"TextShared": {"mode": "vendor"}}, "platforms": ["macOS 12"], "toolsVersion": "5.9"}
-            for key, name, repository in [("sprig", "A", "experimental-integration-swift-sprig"),
-                                          ("firebase", "B", "experimental-integration-swift-firebase")]}})
-        shutil.copyfile(ROOT / "release/allowlist.json", root / "release/allowlist.json")
-        sync_inventory(root)
-        self.assertEqual(shared_markers(root), ["sprig", "firebase"])
-        git(root, "init", "--initial-branch=main")
-        commit(root, "test: two integrations vendor one package helper")
+        root, selected = vendored_fixture(base)
+        self.assertEqual(selected, ["sprig", "firebase"])
         for key, name in [("sprig", "A"), ("firebase", "B")]:
             export(key, "1.0.0", base / f"Kit{name}", root)
             vendored = (base / f"Kit{name}/Sources/Kit{name}/Vendored/TextShared/Normalizer.swift").read_text()

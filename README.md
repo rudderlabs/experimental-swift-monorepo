@@ -48,10 +48,15 @@ The generated package manifests retain the planned public URLs.
 | `Tests/Fixtures/demo` | Demo SDK, Sprig, Firebase and shared code, used as test data only |
 | `release/packages.json` | The only package list: paths, components, targets, platforms and dependency policies |
 | `release/allowlist.json` | Reviewed write targets (package key to repository); a key without a package is reserved |
+| `release/texts.json` | The only source of release, bot PR and commit texts and the ticket link |
+| `release/templates` | Generated CONTRIBUTING.md, `.github/CODEOWNERS` and README block added to every export |
 | `scripts/check_inventory.py` | CI check: package list, allowlist, Release Please entries, generated files and action SHA pins agree |
 | `scripts/generate_github.py` | Regenerates issue forms, `labeler.yml` and `labels.json` from the package list (`--check` in CI) |
 | `scripts/project.py` | Graph inspection and deterministic standalone export |
-| `scripts/publish.py` | Build validation, immutable tag publication, drift check, recovery |
+| `scripts/publish.py` | Build validation, immutable tag publication, drift check, recovery; `--mode` normal, takeover or bootstrap |
+| `scripts/reviewed_publication.py` | Bot PRs, takeover and bootstrap checks, merged-version verification from stored provenance |
+| `scripts/publication_queue.py` | Recover queue: reports and skips a broken item, never rebuilds an open bot PR |
+| `scripts/anchor.py` | Validates an anchor tag request for `anchor-package.yml` |
 | `scripts/release_plan.py` | Affected package selection and reviewed shared-source markers |
 | `scripts/rehearse.py` | Developer, maintainer, and customer lifecycle rehearsal |
 | `.github/workflows` | Gated release, reviewed publication, and manual recovery workflows |
@@ -93,6 +98,13 @@ Publication jobs take destinations only from `release/allowlist.json` (every pac
 Adding a package needs only its `release/packages.json` entry, its allowlist entry, and the regenerated GitHub files.
 A retry must use the original source SHA and version. A newer SHA cannot reuse the same version.
 The manual workflow is also the recovery entry point if Release Please outputs are absent on rerun.
+
+**Merged a bot PR? Press Recover.** Recover is `complete-publication.yml` (Actions → Run workflow, no inputs): every run scans all packages, tags merged versions and creates their Releases. A broken item is reported and skipped; the others still complete. An open bot PR stays `awaiting_review` and is never rebuilt.
+Package states: `awaiting_review`, `awaiting_dependency`, `awaiting_takeover`, `published`, `incomplete`.
+A public repository without `.publication.json` waits as `awaiting_takeover` (other packages continue) until a person removes `.github/workflows` by PR and dispatches `publish.yml` with `mode=takeover`: one bot PR, no tag, `Sources/` byte-identical to the existing tag and `Package.swift` semantically equal. A README-only repository gets a bootstrap bot PR automatically (`mode=bootstrap` forces it).
+`anchor-package.yml` (manual: package, version, main SHA) creates a plain `<component>-<version>` tag and no Release, so nothing is queued or published.
+Every export adds a generated CONTRIBUTING.md, `.github/CODEOWNERS` (`* @rudderlabs/sdk_team`) and a README block linking to monorepo issues; `.publication.json` records a `transform` per file. No workflow file is ever exported.
+Bot commits use the App identity `rudderstack-github-actions[bot]`; a merged version is verified against its own stored `.publication.json`, so Recover survives exporter changes.
 
 See [REMOTE-RUNBOOK.md](REMOTE-RUNBOOK.md) before remote execution.
 See [REPOSITORY-REQUEST.md](REPOSITORY-REQUEST.md) for the exact provisioning request.

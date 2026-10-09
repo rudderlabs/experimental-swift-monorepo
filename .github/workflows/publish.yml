@@ -13,6 +13,10 @@ on:
         description: Full reviewed source commit SHA on main
         type: string
         required: true
+      mode:
+        description: normal, takeover (existing public repo, at its existing tag) or bootstrap (README-only repo)
+        type: string
+        default: normal
   workflow_call:
     secrets:
       RELEASE_PRIVATE_KEY:
@@ -28,6 +32,9 @@ on:
       source_sha:
         type: string
         required: true
+      mode:
+        type: string
+        default: normal
     outputs:
       status:
         value: ${{ jobs.publish.outputs.status }}
@@ -109,18 +116,23 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
       - name: Configure publication bot identity
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          id="$(gh api '/users/rudderstack-github-actions%5Bbot%5D' --jq .id)"
+          [[ "$id" =~ ^[1-9][0-9]*$ ]] || { echo "Bot user id lookup failed"; exit 1; }
+          git config --global user.name "rudderstack-github-actions[bot]"
+          git config --global user.email "${id}+rudderstack-github-actions[bot]@users.noreply.github.com"
       - name: Prepare reviewed publication or finalize merged package
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           ENABLE_EXPERIMENTAL_PUBLICATION: 'true'
           PACKAGE: ${{ inputs.package }}
           VERSION: ${{ inputs.version }}
+          MODE: ${{ inputs.mode || 'normal' }}
         run: |
           gh auth setup-git
-          python3 scripts/publish.py "$PACKAGE" "$VERSION" --source-root "$GITHUB_WORKSPACE/.lab/release-source" --result-file "$RUNNER_TEMP/publication-result.json"
+          python3 scripts/publish.py "$PACKAGE" "$VERSION" --mode "$MODE" --source-root "$GITHUB_WORKSPACE/.lab/release-source" --result-file "$RUNNER_TEMP/publication-result.json"
       - name: Expose verified publication
         id: verified
         run: |
@@ -128,20 +140,21 @@ jobs:
           import json, os
           from pathlib import Path
           result = json.loads((Path(os.environ['RUNNER_TEMP']) / 'publication-result.json').read_text())
-          if result['status'] not in ('published', 'awaiting_review', 'awaiting_dependency'):
+          if result['status'] not in ('published', 'awaiting_review', 'awaiting_dependency', 'awaiting_takeover'):
               raise SystemExit('Publication is incomplete')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               for key in ('status', 'package', 'version', 'tag', 'sourceCommit', 'publicationCommit', 'pullRequest'):
                   output.write(key + '=' + result.get(key, '') + '\n')
+              output.write('takeover=' + str(result.get('takeover', False)).lower() + '\n')
           PYCODE
       - name: Verify anonymous public customer upgrade
-        if: steps.verified.outputs.status == 'published'
+        if: steps.verified.outputs.status == 'published' && steps.verified.outputs.takeover != 'true'
         env:
           PACKAGE: ${{ inputs.package }}
           VERSION: ${{ inputs.version }}
         run: python3 scripts/verify_public_customer.py "$PACKAGE" "$VERSION" "$RUNNER_TEMP/customer-evidence" --source-root "$GITHUB_WORKSPACE/.lab/release-source"
       - name: Retain customer evidence
-        if: always() && steps.verified.outputs.status == 'published'
+        if: always() && steps.verified.outputs.status == 'published' && steps.verified.outputs.takeover != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: customer-${{ inputs.package }}-${{ inputs.version }}

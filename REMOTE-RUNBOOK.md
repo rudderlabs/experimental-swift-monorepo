@@ -38,7 +38,7 @@ Follow [SB-01 through SB-06](docs/release-boundaries/README.md) before the remot
 1. Record the full reviewed source `main` SHA whose manifest versions are all `0.1.0`.
 2. Dispatch `publish.yml` for `sdk`, version `0.1.0`, and that SHA.
 3. Review and merge the bot-created SDK publication PR.
-4. Run or await completion; verify the public SDK tag and GitHub Release.
+4. Press Recover (`complete-publication.yml`, no inputs); verify the public SDK tag and GitHub Release.
 5. Dispatch `publish.yml` for `sprig`, version `0.1.0`, and the same SHA.
 6. Dispatch `publish.yml` for `firebase`, version `0.1.0`, and the same SHA.
    Review each publication PR; await completion before customer testing.
@@ -95,7 +95,8 @@ Use disposable refs for destructive failure tests. Preserve protected branches a
 14. Attempt an update and deletion of a disposable tag under the configured ruleset.
 15. Confirm the publisher App cannot address production repositories.
 
-A workflow rerun may have no new Release Please outputs. The completion workflow is manual: run it after merging a publication PR. Manual publisher dispatch with the original SHA and version is also available.
+A workflow rerun may have no new Release Please outputs. Merged a bot PR? Press Recover (manual, no inputs, scans all packages). Manual publisher dispatch with the original SHA and version is also available.
+Existing public repositories are taken over once: remove `.github/workflows` by a person's PR, then dispatch `publish.yml` with `mode=takeover` at the existing tag (no tag is created). Imported packages start from a plain anchor tag created by `anchor-package.yml`.
 Never move an existing version tag. Keep drift failures for inspection; repair through a reviewed incident decision.
 The three repositories are not one transaction. A completed SDK release can remain available if an integration later fails.
 The repair path publishes the remaining integration from the same approved source.
