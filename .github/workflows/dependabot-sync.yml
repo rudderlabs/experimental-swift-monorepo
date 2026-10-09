@@ -1,0 +1,63 @@
+name: Dependabot marker sync
+# A Dependabot PR that changes a canonical requirement in Package.swift also needs the reviewed release
+# markers, and a releasable title for the packages whose markers changed (D27). Runs only repo scripts.
+on:
+  pull_request:
+    branches: [main]
+    paths: [Package.swift]
+permissions:
+  contents: read
+concurrency:
+  group: dependabot-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  sync:
+    # The release bot's own push has a different actor, so it does not run this again.
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: macos-15
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      # Dependabot runs see only Dependabot secrets: RELEASE_PRIVATE_KEY is stored there too.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: experimental-swift-monorepo
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
+      - name: Refresh release markers
+        run: make sync
+      - name: Choose the releasable title
+        id: plan
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/dependabot_sync.py
+      - name: Push the markers to the Dependabot branch
+        if: steps.plan.outputs.dirty == 'true'
+        env:
+          TOKEN: ${{ steps.token.outputs.token }}
+          APP_SLUG: ${{ steps.token.outputs.app-slug }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git add --all
+          git -c user.name="${APP_SLUG}[bot]" -c user.email="${APP_SLUG}[bot]@users.noreply.github.com" \
+            commit -m "build: sync dependency release markers"
+          # The App-token push also starts CI on the new head.
+          git push "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/${BRANCH}"
+      - name: Retitle the pull request
+        if: steps.plan.outputs.title != ''
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          TITLE: ${{ steps.plan.outputs.title }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr edit "$NUMBER" --repo "$GITHUB_REPOSITORY" --title "$TITLE"

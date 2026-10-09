@@ -50,6 +50,10 @@ The generated package manifests retain the planned public URLs.
 | `release/allowlist.json` | Reviewed write targets (package key to repository); a key without a package is reserved |
 | `release/texts.json` | The only source of release, bot PR and commit texts and the ticket link |
 | `release/templates` | Generated CONTRIBUTING.md, `.github/CODEOWNERS` and README block added to every export |
+| `Makefile` | Developer commands (`make sync`, `make check`, `make test`, `make new-integration`, `make import-integration`); thin wrappers over `scripts/` |
+| `scripts/scaffold.py` | `make new-integration`: a new package with its inventory, Release Please and root `Package.swift` entries |
+| `scripts/import_package.py` | `make import-integration`: imports a repository at a tag (history or snapshot) without a Release Please entry |
+| `scripts/dependabot_sync.py` | Releasable title for a Dependabot PR whose markers changed (`dependabot-sync.yml`) |
 | `scripts/check_inventory.py` | CI check: package list, allowlist, Release Please entries, generated files and action SHA pins agree |
 | `scripts/generate_github.py` | Regenerates issue forms, `labeler.yml` and `labels.json` from the package list (`--check` in CI) |
 | `scripts/project.py` | Graph inspection and deterministic standalone export |
@@ -64,12 +68,18 @@ The generated package manifests retain the planned public URLs.
 ## Developer path
 
 1. Change canonical source in this repository.
-2. Run the Python tests (`python3 -m unittest discover -s Tests -p 'test_*.py'`).
-3. If shared source changes, run `python3 scripts/release_plan.py sync-shared`.
+2. Run `make sync` after changing `Package.swift`, `release/packages.json` or `Shared/` (vendor metadata and markers, shared-source markers, generated GitHub files).
+3. Run `make check test` (the CI policy checks and the Python tests).
 4. Include the changed marker files in the same `fix:` or `feat:` commit.
-   After changing `release/packages.json`, run `python3 scripts/generate_github.py` and `python3 scripts/check_inventory.py`.
 5. Review the affected integration paths in the commit.
 6. Let Release Please prepare versions, Swift version constants, and changelogs after remote enablement.
+
+The root `Package.swift` is the development manifest for every package. Its `// @integrations-products`, `// @integrations-dependencies` and `// @integrations-targets` anchors mark where the commands below add lines (the core SDK sits above them); the first command creates the manifest if it is missing.
+
+- **New integration (Path B):** `make new-integration NAME=Braze [PLATFORMS="iOS 15,tvOS 15"] [SDK_MIN=1.4.1] [VENDOR_URL=… VENDOR_PRODUCTS=… VENDOR_FROM=…]`. The key (`braze`) must already be in `release/allowlist.json` (sdk_team approval). It writes `Integrations/Braze/` (source and test templates, `version.txt`, `CHANGELOG.md`, `README.md`), the inventory entry (platforms default `iOS 15`, `sdkMinimum` default the SDK's current version), the Release Please config entry and the root manifest lines, then runs `make sync`. The version placeholder is `0.0.0` with no manifest entry, so the first release PR is `1.0.0` (no `Release-As`).
+- **Import (Path A):** `make import-integration REPO=experimental-integration-swift-sprig TAG=1.0.0 NAME=Sprig MODE=history|snapshot` (`KIND=core` for the SDK, into `Packages/<Name>`). History mode clones with `--no-local`, rewrites the clone under the package folder with `git filter-repo` (old tags become `legacy/<key>/<tag>` and stay out of the monorepo) and starts a merge of the tag with `--allow-unrelated-histories`; snapshot mode copies the files at the tag. Both remove nested `Package.swift`, `Package.resolved`, `.swiftpm/`, `.github/`, root Xcode projects and per-repository license, CODEOWNERS and hook files, move `Example(s)/` to `Examples/<Name>/` (local package references point at the monorepo root), and add the version files, the inventory entry (version from the tag, `sdkMinimum` from the imported `rudder-sdk-swift` requirement) and the root manifest lines. There is no Release Please entry. The result is staged, never committed or pushed; the command prints the commit and the three Path A steps (import PR with a merge commit for history, anchor tag `<component>-<tag>`, `build(<key>): enable releases`). History mode needs `git-filter-repo`.
+- `make prepare` (git hooks) follows with the developer setup.
+- `dependabot-sync.yml` runs `make sync` on a Dependabot PR that changes `Package.swift`, pushes the markers with the release bot token (`RELEASE_PRIVATE_KEY` stored as a Dependabot secret) and retitles the PR, for example `fix(firebase): bump firebase-ios-sdk to 13.0.0`.
 
 Shared markers contain source hashes under each affected package path.
 Release Please sees these path changes in the reviewed feature or fix commit.
@@ -95,7 +105,7 @@ Dependent integrations wait until their required SDK tag is available. The recov
 An integration-only release skips the SDK job.
 `release-please.yml` turns the path-based Release Please outputs into a plan (`release_plan.py from-outputs`): a `publish (sdk)` job, then one matrix job with a `publish (<key>)` leg per released integration. No workflow lists package names.
 Publication jobs take destinations only from `release/allowlist.json` (every package must be allowlisted with its own repository), use an environment-scoped App token, and run in one concurrency group per package.
-Adding a package needs only its `release/packages.json` entry, its allowlist entry, and the regenerated GitHub files.
+Adding a package needs only its `release/packages.json` entry, its allowlist entry, and the regenerated GitHub files; `make new-integration` and `make import-integration` write them.
 A retry must use the original source SHA and version. A newer SHA cannot reuse the same version.
 The manual workflow is also the recovery entry point if Release Please outputs are absent on rerun.
 
