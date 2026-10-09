@@ -1,0 +1,83 @@
+//
+//  BasicStorage.swift
+//  Analytics
+//
+//  Created by Satheesh Kannan on 14/09/24.
+//
+
+import Foundation
+
+// MARK: - BasicStorage
+/**
+ The interface of the storage module, capable of handling both `KeyValueStore` and `DataStore` objects.
+ */
+final class BasicStorage: Storage, TypeIdentifiable {
+
+    let writeKey: String
+    let storageMode: StorageMode
+
+    private let keyValueStore: KeyValueStore
+    private let dataStore: any DataStore
+
+    init(writeKey: String, logger: Logger, storageMode: StorageMode = Constants.defaultConfig.storageMode) {
+        self.writeKey = writeKey
+        self.storageMode = storageMode
+
+        self.dataStore = StoreProvider.prepareProvider(for: storageMode, writeKey: writeKey, logger: logger)
+        self.keyValueStore = KeyValueStore(writeKey: writeKey, logger: logger)
+    }
+    
+    var eventStorageMode: StorageMode {
+        return self.storageMode
+    }
+    
+    func removeAll() async {
+        await self.dataStore.removeAll()
+        self.keyValueStore.removeAll()
+    }
+}
+
+// MARK: - EventStorage
+/**
+ Implementation of the `EventStorage` protocol.
+ */
+extension BasicStorage {
+    
+    func write(event: String) async {
+        await self.dataStore.retain(value: event)
+    }
+    
+    func read() async -> EventDataResult {
+        return await EventDataResult(dataItems: self.dataStore.retrieve())
+    }
+    
+    func remove(batchReference: String) async -> Bool {
+        return await self.dataStore.remove(reference: batchReference)
+    }
+    
+    func rollover() async {
+        await self.dataStore.rollover()
+    }
+    
+    func resolveBatchId(batchReference: String) -> Int {
+        return self.dataStore.refineBatchId(batchReference: batchReference)
+    }
+}
+
+// MARK: - KeyValueStorage
+/**
+ Implementation of the `KeyValueStorage` protocol.
+ */
+extension BasicStorage {
+    func write<T: Codable>(value: T, key: String) {
+        self.keyValueStore.save(value: value, reference: key)
+    }
+    
+    func read<T: Codable>(key: String) -> T? {
+        return self.keyValueStore.read(reference: key)
+    }
+    
+    func remove(key: String) {
+        self.keyValueStore.delete(reference: key)
+    }
+}
