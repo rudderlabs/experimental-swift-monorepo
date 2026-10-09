@@ -93,6 +93,6 @@ After the bot PR exists and its generated tree matches, close the superseded man
 
 Local tests use real Git branches, protected-main rejection hooks, PR merge commits, and immutable tags.
 Only GitHub PR API responses are modeled in the reviewed-route tests.
-The full rehearsal also compiles exported packages and fresh consumers, including iOS builds.
+The rehearsal (`python3 scripts/rehearse.py`) runs bootstrap, takeover, releases, Recover, drift and clean consumers on fixture repositories with the same modeled PR API; `--ios` adds the iOS consumer build.
 Hosted App Pull requests write access, bot PR creation, required review, scheduled completion, and public customer upgrades need hosted evidence.
 Local passing tests do not close these hosted gates or the dependency-monitoring acceptance gates.
