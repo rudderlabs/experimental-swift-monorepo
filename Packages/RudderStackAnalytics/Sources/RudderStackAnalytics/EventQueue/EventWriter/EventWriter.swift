@@ -1,0 +1,117 @@
+//
+//  EventWriter.swift
+//  RudderStackAnalytics
+//
+//  Created by Satheesh Kannan on 19/08/25.
+//
+
+import Foundation
+
+// MARK: - EventWriter
+/**
+ EventWriter processes events and writes them to storage.
+ */
+final class EventWriter {
+    private let analytics: Analytics
+    private let flushPolicyFacade: FlushPolicyFacade
+    private let writeChannel: AsyncChannel<ProcessingEvent>
+    private let uploadChannel: AsyncChannel<String>
+    private let flushEvent = ProcessingEvent(type: .flush)
+    private var lastEventAnonymousId: String?
+    private var storage: Storage {
+        return self.analytics.configuration.storage
+    }
+    
+    init(analytics: Analytics, writeChannel: AsyncChannel<ProcessingEvent>, uploadChannel: AsyncChannel<String>) {
+        self.analytics = analytics
+        self.flushPolicyFacade = FlushPolicyFacade(analytics: analytics)
+        self.writeChannel = writeChannel
+        self.uploadChannel = uploadChannel
+        self.lastEventAnonymousId = storage.read(key: Constants.storageKeys.lastEventAnonymousId) ?? analytics.anonymousId
+    }
+    
+    func put(_ event: Event) {
+        Task {
+            do {
+                let processingEvent = ProcessingEvent(type: .message, event: event)
+                try self.writeChannel.send(processingEvent)
+                self.analytics.logger.verbose(log: "EventWriter: Event queued for writing (messageId=\(event.messageId))")
+            } catch {
+                self.analytics.logger.error(log: "Failed to send event to writeChannel", error: error)
+            }
+        }
+    }
+
+    func flush() {
+        self.analytics.logger.debug(log: "EventWriter: Flush signal sent to upload channel")
+        Task {
+            do {
+                try self.writeChannel.send(self.flushEvent)
+            } catch {
+                self.analytics.logger.error(log: "Failed to send flush signal to writeChannel", error: error)
+            }
+        }
+    }
+    
+    func start() {
+        Task { [weak self] in
+            guard let self else { return }
+            
+            for await event in self.writeChannel.receive() {
+                let isFlushSignal = event.type == .flush
+                
+                // Process regular events (not flush signals)
+                if !isFlushSignal {
+                    await self.updateAnonymousIdAndRolloverIfNeeded(processingEvent: event)
+
+                    if let json = event.event?.jsonString {
+                        self.analytics.logger.verbose(log: "EventWriter: Storing event (messageId=\(event.event?.messageId ?? "")): \(json)")
+                        await self.storage.write(event: json)
+                        self.flushPolicyFacade.updateCount()
+                    } else {
+                        self.analytics.logger.error(log: "EventWriter: Failed to encode event (messageId=\(event.event?.messageId ?? "")); dropping it.", error: nil)
+                    }
+                }
+                
+                // Check if we should flush (either explicit flush or policy-triggered)
+                if (isFlushSignal || self.flushPolicyFacade.shouldFlush()) && self.analytics.isSourceEnabled {
+                    do {
+                        self.flushPolicyFacade.resetCount()
+                        await self.storage.rollover()
+                        
+                        // Only send upload signal if analytics is active
+                        if self.analytics.isAnalyticsActive {
+                            try self.uploadChannel.send(Constants.defaultConfig.uploadSignal)
+                        }
+                    } catch {
+                        self.analytics.logger.error(log: "Error on upload signal", error: error)
+                    }
+                }
+            }
+        }
+    }
+    
+    func startSchedule() {
+        self.flushPolicyFacade.startSchedule()
+    }
+    
+    func cancelSchedule() {
+        self.flushPolicyFacade.cancelSchedule()
+    }
+    
+    func stop() {
+        guard !self.writeChannel.isClosed else { return }
+        self.writeChannel.close()
+    }
+
+    private func updateAnonymousIdAndRolloverIfNeeded(processingEvent: ProcessingEvent) async {
+        guard let lastEventAnonymousId, let currentEventAnonymousId = processingEvent.event?.anonymousId,
+              currentEventAnonymousId != lastEventAnonymousId else { return }
+        
+        // Rollover when last and current anonymousId are different
+        self.analytics.logger.debug(log: "EventWriter: AnonymousId changed, triggering file rollover")
+        await self.storage.rollover()
+        self.lastEventAnonymousId = currentEventAnonymousId
+        self.storage.write(value: self.lastEventAnonymousId, key: Constants.storageKeys.lastEventAnonymousId)
+    }
+}

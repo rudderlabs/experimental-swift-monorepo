@@ -1,5 +1,10 @@
 [
   {
+    "name": "pkg:sdk",
+    "color": "1d76db",
+    "description": "Package sdk (Packages/RudderStackAnalytics)"
+  },
+  {
     "name": "pkg:tooling",
     "color": "5319e7",
     "description": "Release tooling and CI"

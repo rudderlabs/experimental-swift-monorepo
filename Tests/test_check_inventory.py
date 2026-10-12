@@ -38,10 +38,12 @@ class InventoryTests(unittest.TestCase):
             "repository": "experimental-integration-swift-zzz"}))
         self.edit("allowlist.json", lambda d: d["repositories"].update(zzz="experimental-integration-swift-zzz"))
 
-    def test_root_passes_with_empty_inventory_and_reserved_allowlist_keys(self):
+    def test_root_passes_and_every_package_is_allowlisted(self):
         self.assertEqual(problems(ROOT), [])
-        self.assertEqual(inventory(ROOT), {})
-        self.assertEqual(set(allowlist(ROOT)), {"sdk", "sprig", "firebase"})
+        repositories = allowlist(ROOT)
+        self.assertEqual(set(repositories), {"sdk", "sprig", "firebase"})
+        self.assertEqual({key: p["repository"] for key, p in inventory(ROOT).items()},
+                         {key: repositories[key] for key in inventory(ROOT)})
         form = (ROOT / ".github/ISSUE_TEMPLATE/bug_report.yml").read_text()
         self.assertIn(f"        - {json.dumps(OTHER)}\n    validations:", form)
         self.assertEqual((ROOT / ".github/CODEOWNERS").read_text(), "* @rudderlabs/sdk_team\n")

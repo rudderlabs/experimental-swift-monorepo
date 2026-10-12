@@ -1,4 +1,22 @@
 {
-  "schemaVersion": 1,
-  "packages": {}
+  "packages": {
+    "sdk": {
+      "component": "sdk",
+      "path": "Packages/RudderStackAnalytics",
+      "platforms": [
+        "iOS 15",
+        "macOS 12",
+        "tvOS 15",
+        "watchOS 8"
+      ],
+      "policies": {},
+      "repository": "experimental-rudder-sdk-swift",
+      "resources": [
+        "Resources"
+      ],
+      "target": "RudderStackAnalytics",
+      "toolsVersion": "5.9"
+    }
+  },
+  "schemaVersion": 1
 }

@@ -1,0 +1,74 @@
+//
+//  SessionActions.swift
+//  Analytics
+//
+//  Created by Satheesh Kannan on 25/02/25.
+//
+
+import Foundation
+
+// MARK: - StartSessionAction
+
+struct StartSessionAction: StateAction {
+    typealias T = SessionInfo
+    
+    let sessionId: UInt64
+    let sessionType: SessionType
+    
+    func reduce(currentState: SessionInfo) -> SessionInfo {
+        var state = currentState
+        state.id = sessionId
+        state.isStart = true
+        state.type = sessionType
+        return state
+    }
+}
+
+// MARK: - UpdateIsSessionStartAction
+
+struct UpdateIsSessionStartAction: StateAction {
+    typealias T = SessionInfo
+    
+    private let isSessionStart: Bool
+    
+    init(isSessionStart: Bool) {
+        self.isSessionStart = isSessionStart
+    }
+    
+    func reduce(currentState: SessionInfo) -> SessionInfo {
+        var updatedState = currentState
+        updatedState.isStart = isSessionStart
+        return updatedState
+    }
+}
+
+// MARK: - EndSessionAction
+
+struct EndSessionAction: StateAction {
+    typealias T = SessionInfo
+    
+    func reduce(currentState: SessionInfo) -> SessionInfo {
+        return SessionInfo(id: SessionConstants.defaultSessionId,
+                           type: SessionConstants.defaultSessionType,
+                           isStart: SessionConstants.defaultIsSessionStart,
+                           lastActivityTime: SessionConstants.defaultSessionLastActivityTime)
+    }
+}
+
+// MARK: - UpdateSessionLastActivityAction
+
+struct UpdateSessionLastActivityAction: StateAction {
+    typealias T = SessionInfo
+    
+    private let lastActivityTime: UInt64
+    
+    init(lastActivityTime: UInt64) {
+        self.lastActivityTime = lastActivityTime
+    }
+    
+    func reduce(currentState: SessionInfo) -> SessionInfo {
+        var updatedState = currentState
+        updatedState.lastActivityTime = lastActivityTime
+        return updatedState
+    }
+}
