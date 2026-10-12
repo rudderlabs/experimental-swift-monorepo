@@ -23,6 +23,13 @@
 
 
 
+## [1.4.1](https://github.com/rudderlabs/experimental-swift-monorepo/compare/sdk-1.4.0...sdk-1.4.1) (2026-10-12)
+
+
+### Code Refactoring
+
+* **sdk:** read RSVersion from Version.swift ([#25](https://github.com/rudderlabs/experimental-swift-monorepo/issues/25)) ([a9f1b45](https://github.com/rudderlabs/experimental-swift-monorepo/commit/a9f1b4571ac106bf50b1086c8c2f4a3984f26422))
+
 ## [1.3.1] - 2026-08-10
 
 ### Bug Fixes
