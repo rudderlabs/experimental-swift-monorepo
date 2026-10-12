@@ -10,9 +10,11 @@ let package = Package(
     products: [
         .library(name: "RudderStackAnalytics", targets: ["RudderStackAnalytics"]),
         // @integrations-products
+        .library(name: "RudderIntegrationSprig", targets: ["RudderIntegrationSprig"]),
     ],
     dependencies: [
         // @integrations-dependencies
+        .package(url: "https://github.com/UserLeap/userleap-ios-sdk-releases", .upToNextMajor(from: "4.29.0")),
     ],
     targets: [
         .target(name: "RudderStackAnalytics",
@@ -25,5 +27,11 @@ let package = Package(
                     exclude: ["TestPlans"],
                     resources: [.process("MockResources")]),
         // @integrations-targets
+        .target(name: "RudderIntegrationSprig",
+                dependencies: [.product(name: "UserLeapKit", package: "userleap-ios-sdk-releases"), "RudderStackAnalytics"],
+                path: "Integrations/Sprig/Sources/RudderIntegrationSprig"),
+        .testTarget(name: "RudderIntegrationSprigTests",
+                    dependencies: ["RudderIntegrationSprig"],
+                    path: "Integrations/Sprig/Tests/RudderIntegrationSprigTests"),
     ]
 )

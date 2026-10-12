@@ -5,6 +5,11 @@
     "description": "Package sdk (Packages/RudderStackAnalytics)"
   },
   {
+    "name": "pkg:sprig",
+    "color": "1d76db",
+    "description": "Package sprig (Integrations/Sprig)"
+  },
+  {
     "name": "pkg:tooling",
     "color": "5319e7",
     "description": "Release tooling and CI"

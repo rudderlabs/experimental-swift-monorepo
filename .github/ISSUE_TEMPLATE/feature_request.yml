@@ -9,6 +9,7 @@ body:
       label: "Package"
       options:
         - "sdk"
+        - "sprig"
         - "Other / not sure"
     validations:
       required: true

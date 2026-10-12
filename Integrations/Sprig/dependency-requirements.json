@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 2,
+  "sdkMinimum": "1.2.1",
+  "vendors": [
+    {
+      "identity": "userleap-ios-sdk-releases",
+      "product": "UserLeapKit",
+      "requirement": {
+        "kind": "upToNextMajor",
+        "lower": "4.29.0",
+        "upper": "5.0.0"
+      },
+      "url": "https://github.com/UserLeap/userleap-ios-sdk-releases"
+    }
+  ]
+}
