@@ -1,0 +1,7 @@
+# Firebase was not linted before the import, and its Sources must stay byte-identical until the takeover.
+# Fix these in a follow-up after the takeover and delete this file.
+disabled_rules:
+  - cyclomatic_complexity
+  - function_default_parameter_at_end
+  - shorthand_operator
+  - unused_optional_binding

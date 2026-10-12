@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "sdkMinimum": "1.0.0",
+  "vendors": [
+    {
+      "identity": "firebase-ios-sdk",
+      "product": "FirebaseAnalytics",
+      "requirement": {
+        "kind": "upToNextMajor",
+        "lower": "12.5.0",
+        "upper": "13.0.0"
+      },
+      "url": "https://github.com/firebase/firebase-ios-sdk"
+    },
+    {
+      "identity": "firebase-ios-sdk",
+      "product": "FirebaseCore",
+      "requirement": {
+        "kind": "upToNextMajor",
+        "lower": "12.5.0",
+        "upper": "13.0.0"
+      },
+      "url": "https://github.com/firebase/firebase-ios-sdk"
+    }
+  ]
+}

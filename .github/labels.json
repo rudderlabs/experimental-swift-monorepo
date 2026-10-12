@@ -1,8 +1,18 @@
 [
   {
+    "name": "pkg:firebase",
+    "color": "1d76db",
+    "description": "Package firebase (Integrations/Firebase)"
+  },
+  {
     "name": "pkg:sdk",
     "color": "1d76db",
     "description": "Package sdk (Packages/RudderStackAnalytics)"
+  },
+  {
+    "name": "pkg:sprig",
+    "color": "1d76db",
+    "description": "Package sprig (Integrations/Sprig)"
   },
   {
     "name": "pkg:tooling",

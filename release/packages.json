@@ -1,5 +1,51 @@
 {
   "packages": {
+    "firebase": {
+      "component": "integration-firebase",
+      "path": "Integrations/Firebase",
+      "platforms": [
+        "iOS 15",
+        "macOS 12",
+        "tvOS 15",
+        "watchOS 8"
+      ],
+      "policies": {
+        "RudderStackAnalytics": {
+          "mode": "external",
+          "package": "sdk"
+        }
+      },
+      "repository": "experimental-integration-swift-firebase",
+      "sdkMinimum": "1.0.0",
+      "target": "RudderIntegrationFirebase",
+      "toolsVersion": "5.9",
+      "vendorProducts": [
+        "FirebaseAnalytics",
+        "FirebaseCore"
+      ],
+      "vendors": [
+        {
+          "identity": "firebase-ios-sdk",
+          "product": "FirebaseAnalytics",
+          "requirement": {
+            "kind": "upToNextMajor",
+            "lower": "12.5.0",
+            "upper": "13.0.0"
+          },
+          "url": "https://github.com/firebase/firebase-ios-sdk"
+        },
+        {
+          "identity": "firebase-ios-sdk",
+          "product": "FirebaseCore",
+          "requirement": {
+            "kind": "upToNextMajor",
+            "lower": "12.5.0",
+            "upper": "13.0.0"
+          },
+          "url": "https://github.com/firebase/firebase-ios-sdk"
+        }
+      ]
+    },
     "sdk": {
       "component": "sdk",
       "path": "Packages/RudderStackAnalytics",
@@ -16,6 +62,38 @@
       ],
       "target": "RudderStackAnalytics",
       "toolsVersion": "5.9"
+    },
+    "sprig": {
+      "component": "integration-sprig",
+      "path": "Integrations/Sprig",
+      "platforms": [
+        "iOS 15"
+      ],
+      "policies": {
+        "RudderStackAnalytics": {
+          "mode": "external",
+          "package": "sdk"
+        }
+      },
+      "repository": "experimental-integration-swift-sprig",
+      "sdkMinimum": "1.2.1",
+      "target": "RudderIntegrationSprig",
+      "toolsVersion": "5.9",
+      "vendorProducts": [
+        "UserLeapKit"
+      ],
+      "vendors": [
+        {
+          "identity": "userleap-ios-sdk-releases",
+          "product": "UserLeapKit",
+          "requirement": {
+            "kind": "upToNextMajor",
+            "lower": "4.29.0",
+            "upper": "5.0.0"
+          },
+          "url": "https://github.com/UserLeap/userleap-ios-sdk-releases"
+        }
+      ]
     }
   },
   "schemaVersion": 1
