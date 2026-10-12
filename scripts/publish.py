@@ -58,7 +58,10 @@ def platform_builds(stage, package, state):
 
 def validate(stage, state, mirror_root, package):
     mirrors(stage, mirror_root)
-    output = run(["swift", "build", *swift_options(state)], cwd=stage, env=anonymous_env())
+    # The host `swift build` is a macOS build: only for packages that declare macOS (or no platforms at all).
+    platforms = [p.split()[0] for p in package.get("platforms", [])]
+    output = run(["swift", "build", *swift_options(state)], cwd=stage, env=anonymous_env()) \
+        if not platforms or "macOS" in platforms else ""
     platform_builds(stage, package, state)
     # SwiftPM configuration and the resolved file must never enter the publication tree.
     shutil.rmtree(stage / ".swiftpm", ignore_errors=True)
@@ -131,10 +134,13 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
             # Export only when a version is not merged yet; merged versions use stored provenance (D25).
             expected = export(key, version, stage, root)
             if full:
-                validate(stage, temp / "validation", mirror_root, package)
                 if mode == "takeover":
+                    # The takeover republishes the code already public at the tag: identity, not builds, so a
+                    # platform gap in the old package cannot block it. The next release builds every platform.
                     git(repo, "worktree", "add", "--detach", temp / "baseline", f"refs/tags/{version}")
                     takeover_check(temp / "baseline", stage, package["target"])
+                else:
+                    validate(stage, temp / "validation", mirror_root, package)
             return expected
 
         run(["git", "clone", "--no-checkout", remote, repo])

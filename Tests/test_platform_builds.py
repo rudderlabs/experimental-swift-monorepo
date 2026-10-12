@@ -16,7 +16,7 @@ os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import common
 from common import allowlist, git, write_json
-from publish import platform_builds, publish
+from publish import platform_builds, publish, validate
 
 NAMES = allowlist()
 FOUR = ["iOS 15", "macOS 12", "tvOS 15", "watchOS 8"]
@@ -54,6 +54,13 @@ class PlatformBuildTests(unittest.TestCase):
         self.assertEqual(cwd, self.root / "export")
         self.assertEqual(env["GIT_CONFIG_VALUE_0"], "")
         self.assertNotIn("GH_TOKEN", env)
+
+    def test_host_swift_build_runs_only_for_packages_that_declare_macos(self):
+        for platforms, host in ((["iOS 15"], False), (FOUR, True), ([], True)):
+            self.calls = []
+            with patch("publish.run", side_effect=self.run_command), patch("publish.mirrors"):
+                validate(self.root / "export", self.root / "state", None, {"target": "Kit", "platforms": platforms})
+            self.assertEqual(any(args[0] == "swift" for args, _, _ in self.calls), host, platforms)
 
     def test_every_declared_platform_builds_in_order(self):
         self.assertEqual(self.builds(FOUR), ["generic/platform=iOS", "generic/platform=macOS",

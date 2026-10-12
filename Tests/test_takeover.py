@@ -129,14 +129,14 @@ class TakeoverTests(unittest.TestCase):
              patch('publish.export', side_effect=export_fixture), \
              patch('publish.inventory', return_value={'sprig': {
                  'repository': 'experimental-integration-swift-sprig', 'target': 'Kit'}}), \
-             patch('publish.validate'), patch('publish.source_commit', return_value='a' * 40), \
+             patch('publish.validate') as validate, patch('publish.source_commit', return_value='a' * 40), \
              patch('publish.run', side_effect=self.command), \
              patch('publish.ensure_release', return_value='https://example.invalid/release') as release, \
              patch('publish.find_pr', side_effect=lambda *a: self.pr), \
              patch('reviewed_publication.find_pr', side_effect=lambda *a: self.pr), \
              patch('reviewed_publication.run', side_effect=self.command):
             result = publish('sprig', self.expected['version'], mode=mode)
-            self.released = release.called
+            self.released, self.validated = release.called, validate.called
             return result
 
     def merge(self, branch):
@@ -219,6 +219,7 @@ class TakeoverTests(unittest.TestCase):
         result = self.publish('takeover')
         self.assertEqual((result['status'], result['takeover'], result['publicationCommit']), ('published', True, merged))
         self.assertFalse(self.released)
+        self.assertFalse(self.validated, 'a takeover checks identity, not builds')
         self.assertEqual(git(self.remote, 'tag', '--list'), '1.0.0')
         self.assertEqual(git(self.remote, 'rev-parse', '1.0.0^{commit}'), baseline)
         self.pr = None
