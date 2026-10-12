@@ -80,10 +80,12 @@ def monorepo(base):
                      'enum RudderStackAnalyticsVersion { static let current = "1.4.0" }\n',
                  f"{SDK}/version.txt": "1.4.0\n", f"{SDK}/README.md": "# SDK\n", f"{SDK}/CHANGELOG.md": "# Changelog\n"})
     write_json(root / ".release-please-manifest.json", {SDK: "1.4.0"})
+    # Only the fixture SDK: the real packages must not leak in from the copied files.
+    write_json(root / "release-please-config.json", {**load(root / "release-please-config.json"), "packages": {}})
     config = load(root / "release/packages.json")
-    config["packages"]["sdk"] = {"path": SDK, "target": "RudderStackAnalytics", "component": "sdk",
-                                 "repository": "experimental-rudder-sdk-swift", "policies": {},
-                                 "platforms": ["iOS 15"], "toolsVersion": "5.9"}
+    config["packages"] = {"sdk": {"path": SDK, "target": "RudderStackAnalytics", "component": "sdk",
+                                  "repository": "experimental-rudder-sdk-swift", "policies": {},
+                                  "platforms": ["iOS 15"], "toolsVersion": "5.9"}}
     write_json(root / "release/packages.json", config)
     (root / "Package.swift").write_text(insert(root, {
         "products": product_line("RudderStackAnalytics"),
