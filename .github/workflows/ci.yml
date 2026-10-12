@@ -1,5 +1,6 @@
 name: Validate experimental source
 # PR and main checks (D22: iOS Simulator only; other platforms build at release time in publish.py).
+# D34: a PR runs the package jobs and `policy` only for what it affects (package_ci.py ci-plan); push to main runs all.
 # `ci-ok` is the only required check: the matrix job names change as packages are added.
 # Every command lives in scripts/ (package_ci.py), so `make test` and `make lint` run the same commands.
 on:
@@ -14,10 +15,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   packages:
-    # The package keys for the matrices; `[]` (no packages yet) skips test and export.
+    # The CI plan: package keys for the test and export matrices (`[]` skips the job) and whether policy runs.
     runs-on: ubuntu-latest
     outputs:
-      packages: ${{ steps.matrix.outputs.packages }}
+      test: ${{ steps.plan.outputs.test }}
+      export: ${{ steps.plan.outputs.export }}
+      policy: ${{ steps.plan.outputs.policy }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
@@ -27,12 +30,23 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-      - id: matrix
-        run: echo "packages=$(python3 scripts/package_ci.py matrix)" >> "$GITHUB_OUTPUT"
+          fetch-depth: 0  # the PR base commit, to list the changed paths
+      - id: plan
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            python3 scripts/package_ci.py ci-plan --base "$BASE"
+          else
+            python3 scripts/package_ci.py ci-plan --all
+          fi
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
 
   policy:
     # macOS: dependency_policy.py needs `swift package dump-package`, and the RUN_SWIFT_BUILD_TESTS
     # unit tests run `xcodebuild` platform builds (the release-time check), which need Xcode.
+    needs: packages
+    if: needs.packages.outputs.policy == 'true'
     runs-on: macos-15
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -77,13 +91,13 @@ jobs:
   test:
     name: test (${{ matrix.package }})
     needs: packages
-    if: needs.packages.outputs.packages != '[]'
+    if: needs.packages.outputs.test != '[]'
     runs-on: macos-15
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        package: ${{ fromJSON(needs.packages.outputs.packages) }}
+        package: ${{ fromJSON(needs.packages.outputs.test) }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
@@ -102,13 +116,13 @@ jobs:
   export:
     name: export (${{ matrix.package }})
     needs: packages
-    if: needs.packages.outputs.packages != '[]'
+    if: needs.packages.outputs.export != '[]'
     runs-on: macos-15
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        package: ${{ fromJSON(needs.packages.outputs.packages) }}
+        package: ${{ fromJSON(needs.packages.outputs.export) }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
@@ -125,7 +139,7 @@ jobs:
           PACKAGE: ${{ matrix.package }}
 
   ci-ok:
-    # The only required status check. Skipped matrix jobs (no packages) pass; failed or cancelled jobs fail.
+    # The only required status check. Skipped jobs (nothing affected, or no packages) pass; failed or cancelled fail.
     if: always()
     needs: [packages, policy, lint, test, export]
     runs-on: ubuntu-latest

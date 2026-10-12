@@ -1,9 +1,10 @@
-"""PR CI and developer commands for the packages: matrix, iOS Simulator tests, export check, lint, hints.
+"""PR CI and developer commands for the packages: CI plan, iOS Simulator tests, export check, lint, hints.
 
 `make test`, `make lint` and `make affected` and the ci.yml jobs call this file, so local runs and CI
 run the same commands.
 """
 import argparse
+import ast
 import json
 import os
 from pathlib import Path
@@ -21,11 +22,70 @@ from release_plan import affected
 TYPES = "feat|fix|refactor|perf|style|test|docs|chore|build|ci|revert"
 TITLE = re.compile(rf"(?:{TYPES})\((?P<scope>[^)]*)\)!?: ")
 PICK_SIMULATOR = ROOT / "scripts/ci/pick-simulator.sh"
+# PR CI selection (D34). A trailing slash matches a folder. The scripts package_ci.py imports also count as BUILD.
+BUILD = ("Package.swift", "Package.resolved", ".swiftlint.yml", "release/packages.json", "release/allowlist.json",
+         ".github/workflows/ci.yml", "scripts/ci/")
+EXPORT = ("LICENSE", "release/templates/")
+POLICY = ("scripts/", "release/", "Tests/", ".github/", "Shared/", "Makefile", "Package.swift", "Package.resolved",
+          ".release-please-manifest.json", "release-please-config.json")
+POLICY_FILES = ("dependency-requirements.json", "shared-source.json")
 
 
 def matrix(root=ROOT):
     """Package keys for the `test (<key>)` and `export (<key>)` matrices; `[]` skips both."""
     return list(inventory(root))
+
+
+def matches(path, patterns):
+    return any(path == p or (p.endswith("/") and path.startswith(p)) for p in patterns)
+
+
+def imported():
+    """scripts/ modules that package_ci.py imports, directly or not: each changes how every package is checked."""
+    found, pending = set(), ["package_ci"]
+    while pending:
+        path = f"scripts/{pending.pop()}.py"
+        if path in found or not (ROOT / path).is_file():
+            continue
+        found.add(path)
+        for node in ast.walk(ast.parse((ROOT / path).read_text())):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                pending.append(node.module)
+            elif isinstance(node, ast.Import):
+                pending += [alias.name for alias in node.names]
+    return found
+
+
+def dependents(keys, packages):
+    """`keys` plus every package that depends on one of them, directly or not (inventory policies, D18)."""
+    result = set(keys)
+    while True:
+        more = {k for k, p in packages.items() if k not in result
+                and any(v.get("package") in result for v in p.get("policies", {}).values())}
+        if not more:
+            return result
+        result |= more
+
+
+def ci_plan(paths, root=ROOT, base_ref="HEAD"):
+    """Packages to test and export and whether the policy job runs; `paths=None` (push to main) checks everything.
+
+    Shared build inputs select every package, LICENSE and release templates every export, docs nothing. Other paths
+    select their package (release_plan.affected), and tests also cover the packages that depend on it.
+    """
+    packages = inventory(root)
+    every = list(packages)
+    if paths is None:
+        return {"test": every, "export": every, "policy": True}
+    policy = any(matches(p, POLICY) or p.rsplit("/", 1)[-1] in POLICY_FILES for p in paths)
+    build = imported()
+    if any(matches(p, BUILD) or p in build for p in paths):
+        return {"test": every, "export": every, "policy": policy}
+    code = [p for p in paths if not matches(p, EXPORT) and not p.endswith(".md") and not p.startswith("docs/")]
+    direct = affected(code, root, base_ref) if code else []
+    test = dependents(direct, packages)
+    export = every if any(matches(p, EXPORT) for p in paths) else direct
+    return {"test": [k for k in every if k in test], "export": [k for k in every if k in export], "policy": policy}
 
 
 def test_targets(data, package):
@@ -209,6 +269,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("matrix", help="package keys as JSON")
+    command = commands.add_parser("ci-plan", help="packages to test and export, and whether policy runs, as JSON")
+    group = command.add_mutually_exclusive_group(required=True)
+    group.add_argument("--base", help="PR base: check what this branch changes since it left BASE")
+    group.add_argument("--all", action="store_true", help="push to main: check everything")
     command = commands.add_parser("test", help="iOS Simulator tests")
     command.add_argument("--package", action="append")
     commands.add_parser("export-check", help="export, manifest check and iOS build").add_argument(
@@ -228,6 +292,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "matrix":
         print(json.dumps(matrix(), separators=(",", ":")))
+    elif args.command == "ci-plan":
+        plan = ci_plan(None) if args.all else ci_plan(changed(args.base), base_ref=base_commit(args.base))
+        if os.environ.get("GITHUB_OUTPUT"):
+            with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                for name, value in plan.items():
+                    output.write(f"{name}={json.dumps(value, separators=(',', ':'))}\n")
+        print(json.dumps(plan))
     elif args.command == "test":
         test(args.package)
     elif args.command == "export-check":

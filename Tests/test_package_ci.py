@@ -1,4 +1,4 @@
-"""PR CI plan and helpers: matrix, simulator choice, test targets, export manifest check, scope hint, ci-ok."""
+"""PR CI plan and helpers: CI plan, matrix, simulator choice, test targets, export manifest check, scope hint, ci-ok."""
 import contextlib
 import io
 import json
@@ -17,8 +17,9 @@ os.environ.update(GIT_CONFIG_COUNT="3", GIT_CONFIG_KEY_0="gc.auto", GIT_CONFIG_V
 os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-from common import ROOT
-from package_ci import failed_needs, main, manifest_problems, matrix, scheme, scope_warnings, test_command, test_targets
+from common import ROOT, commit, git, write_json
+from package_ci import (changed, ci_plan, failed_needs, main, manifest_problems, matrix, scheme, scope_warnings,
+                        test_command, test_targets)
 
 FIXTURE = ROOT / "Tests/Fixtures/demo"
 PICK = ROOT / "scripts/ci/pick-simulator.sh"
@@ -74,8 +75,8 @@ class MatrixTests(unittest.TestCase):
         for job in ("test", "export"):
             block = WORKFLOW.split(f"\n  {job}:\n", 1)[1].split("\n\n  ", 1)[0]
             self.assertIn("needs: packages\n", block)
-            self.assertIn("if: needs.packages.outputs.packages != '[]'", block)
-            self.assertIn("package: ${{ fromJSON(needs.packages.outputs.packages) }}", block)
+            self.assertIn(f"if: needs.packages.outputs.{job} != '[]'", block)
+            self.assertIn(f"package: ${{{{ fromJSON(needs.packages.outputs.{job}) }}}}", block)
             self.assertIn(f"name: {job} (${{{{ matrix.package }}}})", block)
 
     def test_fixture_inventory_gives_one_job_per_package_in_allowlist_order(self):
@@ -102,6 +103,104 @@ class MatrixTests(unittest.TestCase):
         os.environ["NEEDS"] = json.dumps({"packages": {"result": "success"}, "test": {"result": "skipped"}})
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(main(["ci-ok"]), 0)
+
+
+class CiPlanTests(unittest.TestCase):
+    """D34: a PR checks what it affects; push to main checks everything."""
+    every = ["sdk", "sprig", "firebase"]
+    sprig = "Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.temp.name)
+        shutil.copytree(FIXTURE, cls.root, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".build", ".swiftpm"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def plan(self, *paths):
+        return ci_plan(list(paths), self.root)
+
+    def test_package_change_selects_only_that_package(self):
+        self.assertEqual(self.plan(self.sprig), {"test": ["sprig"], "export": ["sprig"], "policy": False})
+
+    def test_sdk_change_also_tests_its_dependents_but_exports_only_the_sdk(self):
+        # Exported integrations build against the published SDK tag, so only their tests see the local SDK.
+        self.assertEqual(self.plan("Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift"),
+                         {"test": self.every, "export": ["sdk"], "policy": False})
+
+    def test_dependents_come_from_the_inventory_so_a_new_integration_needs_no_edit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copytree(self.root / "release", root / "release")
+            data = json.loads((root / "release/packages.json").read_text())
+            data["packages"]["kit"] = {"path": "Integrations/Kit", "target": "Kit", "repository": "kit",
+                                       "policies": {"DemoSprig": {"mode": "external", "package": "sprig"}}}
+            for package in data["packages"].values():
+                package["policies"] = {k: v for k, v in package["policies"].items() if v["mode"] == "external"}
+            write_json(root / "release/packages.json", data)
+            allowlist = json.loads((root / "release/allowlist.json").read_text())
+            allowlist["repositories"]["kit"] = "kit"
+            write_json(root / "release/allowlist.json", allowlist)
+            # write_json sorts the allowlist, so the plan lists keys alphabetically here.
+            self.assertEqual(ci_plan(["Packages/DemoSDK/A.swift"], root)["test"], ["firebase", "kit", "sdk", "sprig"])
+            self.assertEqual(ci_plan(["Integrations/Sprig/A.swift"], root)["test"], ["kit", "sprig"])
+            self.assertEqual(ci_plan(["Integrations/Kit/A.swift"], root)["test"], ["kit"])
+
+    def test_vendored_shared_source_selects_the_packages_that_vendor_it(self):
+        self.assertEqual(self.plan("Shared/DemoShared/DemoNormalizer.swift"),
+                         {"test": ["sprig", "firebase"], "export": ["sprig", "firebase"], "policy": True})
+
+    def test_shared_build_inputs_select_every_package(self):
+        for path in ["Package.swift", "Package.resolved", ".swiftlint.yml", "release/packages.json",
+                     "release/allowlist.json", ".github/workflows/ci.yml", "scripts/ci/pick-simulator.sh",
+                     "scripts/package_ci.py", "scripts/project.py", "scripts/common.py"]:
+            plan = self.plan(path, self.sprig)
+            self.assertEqual((plan["test"], plan["export"]), (self.every, self.every), path)
+        self.assertEqual(self.plan(".swiftlint.yml")["policy"], False)
+
+    def test_docs_select_nothing(self):
+        self.assertEqual(self.plan("README.md", "docs/release-boundaries/README.md", "Integrations/Sprig/README.md"),
+                         {"test": [], "export": [], "policy": False})
+
+    def test_license_and_release_templates_export_everything_without_tests(self):
+        self.assertEqual(self.plan("LICENSE"), {"test": [], "export": self.every, "policy": False})
+        self.assertEqual(self.plan("release/templates/README-block.md", self.sprig),
+                         {"test": ["sprig"], "export": self.every, "policy": True})
+
+    def test_policy_runs_only_for_tooling_and_policy_inputs(self):
+        for path in ["scripts/dependabot_sync.py", "release/texts.json", "Tests/test_anchor.py", ".github/labeler.yml",
+                     "Makefile", "Package.swift", "Package.resolved", ".release-please-manifest.json",
+                     "release-please-config.json", "Integrations/Sprig/dependency-requirements.json",
+                     "Integrations/Sprig/shared-source.json", "Shared/DemoShared/DemoNormalizer.swift"]:
+            self.assertTrue(self.plan(path)["policy"], path)
+        for path in [self.sprig, "README.md", "LICENSE", "Examples/Sprig/ContentView.swift", ".gitignore"]:
+            self.assertFalse(self.plan(path)["policy"], path)
+        # A tooling script package_ci.py does not import changes no package job.
+        self.assertEqual(self.plan("scripts/dependabot_sync.py"), {"test": [], "export": [], "policy": True})
+
+    def test_push_to_main_checks_everything(self):
+        self.assertEqual(ci_plan(None, self.root), {"test": self.every, "export": self.every, "policy": True})
+        block = WORKFLOW.split("\n  packages:\n", 1)[1].split("\n  policy:\n", 1)[0]
+        self.assertIn("ci-plan --all", block)
+        self.assertIn('ci-plan --base "$BASE"', block)
+        self.assertIn("BASE: ${{ github.event.pull_request.base.sha }}", block)
+        self.assertIn("if: needs.packages.outputs.policy == 'true'", WORKFLOW.split("\n  policy:\n", 1)[1])
+
+    def test_changed_paths_come_from_the_branch_commits(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copytree(self.root, root, dirs_exist_ok=True)
+            git(root, "init", "--initial-branch=main")
+            base = commit(root, "test: baseline")
+            git(root, "switch", "-c", "feature")
+            (root / self.sprig).write_text((root / self.sprig).read_text() + "// change\n")
+            commit(root, "fix(sprig): change")
+            self.assertEqual(changed(base, root), [self.sprig])
+            self.assertEqual(ci_plan(changed(base, root), root, base),
+                             {"test": ["sprig"], "export": ["sprig"], "policy": False})
 
 
 DEMO = {"name": "SwiftPublicationExperiment", "targets": [
