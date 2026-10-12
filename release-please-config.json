@@ -60,5 +60,16 @@
       "hidden": true
     }
   ],
-  "packages": {}
+  "packages": {
+    "Packages/RudderStackAnalytics": {
+      "component": "sdk",
+      "package-name": "RudderStackAnalytics",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "Sources/RudderStackAnalytics/Version.swift"
+        }
+      ]
+    }
+  }
 }

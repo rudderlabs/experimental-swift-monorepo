@@ -23,7 +23,8 @@ class InventoryTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "source"
         shutil.copytree(FIXTURE / "release", self.root / "release")
-        shutil.copyfile(ROOT / "release-please-config.json", self.root / "release-please-config.json")
+        # The real shared settings, without the real packages (the fixture has none in Release Please).
+        write_json(self.root / "release-please-config.json", {**load(ROOT / "release-please-config.json"), "packages": {}})
         write(self.root)
 
     def edit(self, name, change):
