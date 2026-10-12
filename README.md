@@ -117,7 +117,7 @@ Update that requirement in a coordinated release when an integration needs a new
 Export fails if a package has an `external` policy but no `sdkMinimum`.
 Each inventory entry also sets its own `platforms` (for example `["iOS 15"]`) and `toolsVersion` (for example `"5.9"`).
 The generated manifest uses exactly those, never the root manifest's values.
-Before any publication write, the publisher builds the exported package with `xcodebuild` for every declared platform (generic device destinations, unsigned, anonymous, temporary caches). PR CI builds only the iOS Simulator.
+Before any publication write, the publisher builds the exported package with `xcodebuild` for every declared platform (generic device destinations, unsigned, anonymous, temporary caches), plus a host `swift build` when the package declares macOS. PR CI builds only the iOS Simulator. A takeover builds nothing: it republishes the code already public at the existing tag, so it checks identity (byte-identical `Sources/`, same `Package.swift` meaning); the next release runs every build.
 Resources keep their `process` or `copy` rule from `swift package dump-package`. Folder resources are copied whole and listed by relative path in the inventory.
 
 ## Maintainer path
