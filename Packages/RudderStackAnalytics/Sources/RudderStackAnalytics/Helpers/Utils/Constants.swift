@@ -241,8 +241,7 @@ enum SDKManagedContextKey: String, CaseIterable {
 /**
  The version number of the Swift SDK.
  
- **Important:**
- Do not edit this value unless performing a manual release.
+ Read from `Version.swift`, which Release Please updates on every release.
  */
-let RSVersion: String = "1.4.0"
+let RSVersion: String = RudderStackAnalyticsVersion.current
 let RSLibraryName: String = "rudder-sdk-swift"
