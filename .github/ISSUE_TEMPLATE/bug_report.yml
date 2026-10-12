@@ -10,6 +10,7 @@ body:
       options:
         - "sdk"
         - "sprig"
+        - "firebase"
         - "Other / not sure"
     validations:
       required: true
