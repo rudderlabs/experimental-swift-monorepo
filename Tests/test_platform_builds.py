@@ -16,7 +16,8 @@ os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import common
 from common import allowlist, git, write_json
-from publish import platform_builds, publish, validate
+from project import platform_builds
+from publish import publish, validate
 
 NAMES = allowlist()
 FOUR = ["iOS 15", "macOS 12", "tvOS 15", "watchOS 8"]
@@ -38,7 +39,7 @@ class PlatformBuildTests(unittest.TestCase):
         return ""
 
     def builds(self, platforms):
-        with patch("publish.run", side_effect=self.run_command):
+        with patch("project.run", side_effect=self.run_command):
             platform_builds(self.root / "export", {"target": "Kit", "platforms": platforms}, self.root / "state")
         return [args[args.index("-destination") + 1] for args, _, _ in self.calls]
 
@@ -58,7 +59,8 @@ class PlatformBuildTests(unittest.TestCase):
     def test_host_swift_build_runs_only_for_packages_that_declare_macos(self):
         for platforms, host in ((["iOS 15"], False), (FOUR, True), ([], True)):
             self.calls = []
-            with patch("publish.run", side_effect=self.run_command), patch("publish.mirrors"):
+            with patch("publish.run", side_effect=self.run_command), patch("project.run", side_effect=self.run_command), \
+                    patch("publish.mirrors"):
                 validate(self.root / "export", self.root / "state", None, {"target": "Kit", "platforms": platforms})
             self.assertEqual(any(args[0] == "swift" for args, _, _ in self.calls), host, platforms)
 
@@ -82,7 +84,7 @@ class PlatformBuildTests(unittest.TestCase):
         self.failing = "generic/platform=tvOS"
         with patch("publish.export", side_effect=export), patch("publish.mirrors"), \
              patch("publish.source_commit", return_value="a" * 40), \
-             patch("publish.run", side_effect=self.run_command):
+             patch("publish.run", side_effect=self.run_command), patch("project.run", side_effect=self.run_command):
             with self.assertRaisesRegex(RuntimeError, r"Release build failed for tvOS 15 \(generic/platform=tvOS\)"):
                 publish("sprig", "1.0.0", remotes, root=self.root / "source")
         self.assertEqual([args[0] for args, _, _ in self.calls], ["swift", "xcodebuild", "xcodebuild", "xcodebuild"])

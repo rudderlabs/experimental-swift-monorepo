@@ -17,8 +17,7 @@ from xml.sax.saxutils import quoteattr
 
 from common import ROOT, anonymous_env, git, inventory, run, url
 from dependency_policy import manifest
-from project import PLATFORM, export
-from publish import platform_builds
+from project import PLATFORM, export, platform_builds
 
 TYPES = "feat|fix|refactor|perf|style|test|docs|chore|build|ci|revert"
 TITLE = re.compile(rf"(?:{TYPES})\((?P<scope>[^)]*)\)!?: ")

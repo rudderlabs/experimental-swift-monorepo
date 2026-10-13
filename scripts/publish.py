@@ -11,13 +11,9 @@ import tempfile
 from common import (ROOT, OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, file_hashes, git,
                     inventory, load, mirrors, run, swift_options, text, url, write_json)
 from maintenance_branch import line, public_base, semver, source_line
-from project import SEMVER, export
+from project import SEMVER, export, platform_builds
 import release_notes
 from reviewed_publication import MODES, Abandoned, WORKFLOWS, find_pr, layout, reviewed_commit, takeover_check, verify_merged
-
-DESTINATIONS = {"iOS": "iOS", "macOS": "macOS", "macCatalyst": "macOS,variant=Mac Catalyst",
-                "tvOS": "tvOS", "watchOS": "watchOS", "visionOS": "visionOS"}
-
 
 @contextlib.contextmanager
 def publication_lock(mirror_root, name):
@@ -69,19 +65,6 @@ def base_start(repo, version):
     if not older:
         raise ValueError("No public {}.{}.* tag to start the maintenance base from".format(*line(version)))
     return git(repo, "rev-parse", f"refs/tags/{max(older, key=semver)}^{{commit}}")
-
-
-def platform_builds(stage, package, state):
-    # PR CI builds only the iOS Simulator. Generic device destinations need no simulator runtime or signing.
-    for platform in package["platforms"]:
-        destination = "generic/platform=" + DESTINATIONS[platform.split()[0]]
-        try:
-            run(["xcodebuild", "build", "-quiet", "-scheme", package["target"], "-destination", destination,
-                 "-scmProvider", "system", "-disablePackageRepositoryCache",
-                 "-clonedSourcePackagesDirPath", state / "xcode-packages", "-packageCachePath", state / "xcode-cache",
-                 "-derivedDataPath", state / "xcode-build", "CODE_SIGNING_ALLOWED=NO"], cwd=stage, env=anonymous_env())
-        except RuntimeError as error:
-            raise RuntimeError(f"Release build failed for {platform} ({destination})\n{error}") from error
 
 
 def validate(stage, state, mirror_root, package):
