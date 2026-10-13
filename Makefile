@@ -36,7 +36,7 @@ test-python:
 
 ## Packages this branch changes since it left BASE (default origin/main), e.g. ["sprig"].
 affected:
-	@$(PYTHON) scripts/package_ci.py affected --base "$(BASE)"
+	@$(PYTHON) scripts/ci_plan.py --base "$(BASE)" --affected
 
 ## SwiftLint on the Swift files changed since BASE (no-op when there are none).
 lint:

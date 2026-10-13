@@ -1,8 +1,8 @@
-name: Validate experimental source
+name: PR Validation
 # PR and main checks (D22: iOS Simulator only; other platforms build at release time in publish.py).
-# D34: a PR runs the package jobs and `policy` only for what it affects (package_ci.py ci-plan); push to main runs all.
+# D34: a PR runs the package jobs and `policy` only for what it affects (ci_plan.py); push to main runs all.
 # `ci-ok` is the only required check: the matrix job names change as packages are added.
-# Every command lives in scripts/ (package_ci.py), so `make test` and `make lint` run the same commands.
+# Every command lives in scripts/ (ci_plan.py, package_ci.py), so `make test` and `make lint` run the same commands.
 on:
   pull_request:
     branches: [main]
@@ -34,9 +34,9 @@ jobs:
       - id: plan
         run: |
           if [ "$EVENT" = pull_request ]; then
-            python3 scripts/package_ci.py ci-plan --base "$BASE"
+            python3 scripts/ci_plan.py --base "$BASE"
           else
-            python3 scripts/package_ci.py ci-plan --all
+            python3 scripts/ci_plan.py --all
           fi
         env:
           EVENT: ${{ github.event_name }}

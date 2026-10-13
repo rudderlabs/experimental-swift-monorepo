@@ -3,12 +3,12 @@
 # ──────────────────────────────────────────────────────────────
 # pre-push hook (ported from rudder-sdk-swift)
 # Validates branch name, then tests only what the push affects, using
-# the same plan as PR CI (`scripts/package_ci.py ci-plan --base
-# origin/main`): `make test PKG=<key>` for each affected package and
-# `make test-python` when scripts, release data or other policy paths
-# change. Docs-only pushes run no tests. Without a local origin/main
-# it runs the full `make test`. The hook never fetches: run
-# `git fetch origin` to refresh origin/main.
+# the same plan as PR CI (`scripts/ci_plan.py --base origin/main`):
+# `make test PKG=<key>` for each affected package and `make test-python`
+# when scripts, release data or other policy paths change. Docs-only
+# pushes run no tests. Without a local origin/main it runs the full
+# `make test`. The hook never fetches: run `git fetch origin` to
+# refresh origin/main.
 #
 # PRE_PUSH_FORCE_TESTS=1 runs the test step without a terminal (used
 # by Tests/test_git_hooks.py only).
@@ -127,8 +127,8 @@ fi
 
 # The plan covers the checked-out branch (HEAD) since it left origin/main,
 # committed changes only: {"test": [keys], "export": [...], "policy": bool}.
-if ! PLAN=$(cd "$ROOT" && python3 scripts/package_ci.py ci-plan --base "$BASE"); then
-    echo "[ERROR] Could not compute the test plan (scripts/package_ci.py ci-plan)."
+if ! PLAN=$(cd "$ROOT" && python3 scripts/ci_plan.py --base "$BASE"); then
+    echo "[ERROR] Could not compute the test plan (scripts/ci_plan.py)."
     exit 1
 fi
 read -r POLICY PACKAGES <<< "$(python3 -c 'import json, sys; p = json.load(sys.stdin); print(int(p["policy"]), *p["test"])' <<< "$PLAN")"

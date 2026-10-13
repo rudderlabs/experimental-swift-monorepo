@@ -1,5 +1,5 @@
-name: Recover (complete reviewed experimental publications)
-# The Recover button (D20): manual, no inputs, every run scans all packages.
+name: "Tag & Release Packages"
+# Completes reviewed publications (D20): manual, no inputs, every run scans all packages.
 on:
   workflow_dispatch:
 permissions:

@@ -1,7 +1,8 @@
 """Local publication lifecycle on temporary fixture repositories. Git, SwiftPM and Xcode are real; GitHub is modeled.
 
 `python3 scripts/rehearse.py` builds a throwaway monorepo from Tests/Fixtures/demo and one local bare "public"
-repository per allowlisted package, then runs bootstrap, takeover, releases, Recover, drift and clean consumers.
+repository per allowlisted package, then runs bootstrap, takeover, releases, Tag & Release Packages, drift and clean
+consumers.
 Nothing reaches GitHub: `gh` is a local model on PATH and every github.com Git URL is rewritten to a local
 bare repository or to a path that does not exist.
 """
@@ -20,7 +21,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qsl
 
 from common import (ROOT, CONSUMER_NAME, OWNER, RELEASE_BRANCH, SOURCE_NAME, allowlist, anonymous_env, commit, git,
-                    inventory, load, run, swift_options, text, url, write_json)
+                    inventory, load, run, swift_options, url, write_json)
 from anchor import anchor
 import project
 import publish
@@ -101,6 +102,10 @@ MODELED = ('gh (repository identity, bot PRs, Releases) as local JSON through a 
            'main update; the App bot user id; Swift Collections as a local stand-in tag 1.1.4')
 NOT_MODELED = ('GitHub Actions, App permissions, rulesets, environments, Release Please itself, anonymous public '
                'network access, reverse sync (ingest)')
+
+
+# Last consumer commit built on the demo fixture packages (before the real-products change).
+DEMO_CONSUMER_COMMIT = 'b1424d19e02599478ba2807be9a30f15bab92fb7'
 
 
 class RehearsalError(Exception):
@@ -443,7 +448,9 @@ class Lab:
     def ios_consumer(self, versions):
         """The sibling consumer template (CLI and iOS Simulator app) at the given versions, through local mirrors."""
         folder = self.dir / 'consumers' / 'ios-template'
-        run(['git', 'clone', '--quiet', '--no-local', '--branch', RELEASE_BRANCH, self.template, folder])
+        run(['git', 'clone', '--quiet', '--no-local', self.template, folder])
+        # The rehearsal publishes the demo fixture packages; the consumer's main now uses the real products.
+        run(['git', '-C', folder, 'checkout', '--quiet', '--detach', DEMO_CONSUMER_COMMIT])
         module(folder / 'scripts/dependencies.py', 'consumer_dependencies').render(
             folder, [f'{k}={v}' for k, v in versions.items()])
         self.mirror(folder, allowlisted=False)
@@ -499,18 +506,22 @@ def step_1(lab):
           'an open bot PR changed main or tags')
     check(lab.recover() == {'sdk 0.1.0': 'skipped awaiting_review'}, 'open PR must not be rebuilt')
     check(len(lab.pulls('sdk')) == 1 and lab.pulls('sdk')[0]['head']['sha'] == pr['head']['sha'],
-          'Recover rebuilt an open PR')
+          'Tag & Release Packages rebuilt an open PR')
     merged = lab.merge('sdk', 'publication/sdk/0.1.0')
-    check(lab.recover() == {'sdk 0.1.0': 'published'}, 'Recover should tag the merged bootstrap')
+    check(lab.recover() == {'sdk 0.1.0': 'published'}, 'Tag & Release Packages should tag the merged bootstrap')
     check(git(lab.bare('sdk'), 'rev-parse', '0.1.0^{commit}') == merged, 'tag is not the merge commit')
     check(json.loads(git(lab.bare('sdk'), 'show', '0.1.0:.publication.json'))['sourceCommit'] == sha,
           'provenance source commit')
-    check([r['body'] for r in lab.releases('sdk')] == [text('releaseBody', source=sha, publication=merged)],
-          'Release record')
+    release = lab.releases('sdk')
+    check(len(release) == 1 and release[0]['name'] == '0.1.0' and release[0]['body'].startswith('# DemoSDK 0.1.0\n\n')
+          and release[0]['body'].endswith(f'\n\nSource: monorepo commit https://github.com/{OWNER}/{SOURCE_NAME}'
+                                          f'/commit/{sha}\n'), f'Release record: {release}')
+    check(lab.pulls('sdk')[0]['title'] == 'chore(release): 0.1.0', 'publish PR title')
     check('README.md' in git(lab.bare('sdk'), 'ls-tree', '--name-only', '0.1.0') and
           'Package.swift' in git(lab.bare('sdk'), 'ls-tree', '--name-only', '0.1.0'), 'bootstrap tree')
-    lab.proved('README-only repo got a bootstrap bot PR, no tag while open, Recover did not rebuild the open PR')
-    lab.proved('after the reviewed merge, Recover tagged 0.1.0 at the merge commit and created the Release')
+    lab.proved('README-only repo got a bootstrap bot PR, no tag while open, Tag & Release Packages did not rebuild the '
+               'open PR')
+    lab.proved('after the reviewed merge, Tag & Release Packages tagged 0.1.0 at the merge commit and created the Release')
 
 
 def step_2(lab):
@@ -565,9 +576,12 @@ def step_3(lab):
     check('unnamed sprig event' in generated and 'import DemoShared' not in generated, 'exported source')
     check(json.loads(git(lab.bare('sprig'), 'show', '0.1.2:.publication.json'))['sourceCommit'] == sha,
           'provenance')
-    check(lab.releases('sprig')[-1]['body'] == text('releaseBody', source=sha, publication=merged), 'Release')
+    release = lab.releases('sprig')[-1]
+    check(release['name'] == '0.1.2' and release['body'].startswith('# DemoSprig 0.1.2\n\nLocal lifecycle') and
+          f'**Full Changelog**: https://github.com/{OWNER}/{NAMES["sprig"]}/compare/0.1.1...0.1.2\n' in
+          release['body'] and release['body'].endswith(f'/commit/{sha}\n'), 'Release')
     lab.integration_only = lab.refs('sdk', 'firebase') == others
-    lab.proved('sprig 0.1.2: export and build before the bot PR; tag at the merge commit after Recover')
+    lab.proved('sprig 0.1.2: export and build before the bot PR; tag at the merge commit after Tag & Release Packages')
 
 
 def step_4(lab):
@@ -600,8 +614,8 @@ def step_5(lab):
     check('from: "0.2.0"' in manifest and 'exact: "1.1.4"' in manifest, 'firebase requirements')
     lab.merge('firebase', 'publication/firebase/0.1.0')
     lab.proved('firebase 0.1.0 (sdkMinimum 0.2.0) was awaiting_dependency while the SDK 0.2.0 PR was open')
-    lab.proved('the same Recover that tagged SDK 0.2.0 then built Firebase and opened its bootstrap PR; '
-               'merged here, tagged in step 6')
+    lab.proved('the same Tag & Release Packages run that tagged SDK 0.2.0 then built Firebase and opened its bootstrap '
+               'PR; merged here, tagged in step 6')
 
 
 def step_6(lab):
@@ -620,7 +634,7 @@ def step_6(lab):
     check(git(lab.bare('firebase'), 'rev-parse', '0.1.0^{commit}') ==
           git(lab.bare('firebase'), 'rev-parse', 'main'), 'firebase tag')
     lab.proved('a source release off main was reported incomplete and skipped; Firebase 0.1.0 still '
-               'completed in the same Recover')
+               'completed in the same Tag & Release Packages run')
 
 
 def step_7(lab):
@@ -642,19 +656,19 @@ def step_7(lab):
           'sprig PR expected after the revert')
     lab.merge('sprig', 'publication/sprig/0.1.3')
     check(lab.recover() == {'sprig 0.1.3': 'published', 'sprig 0.1.9': 'skipped incomplete'}, 'sprig 0.1.3')
-    lab.proved('after the edit was reverted by a reviewed PR, Recover published sprig 0.1.3')
+    lab.proved('after the edit was reverted by a reviewed PR, Tag & Release Packages published sprig 0.1.3')
 
 
 def step_8(lab):
     before = lab.snapshot()
     for _ in range(2):
         check(lab.recover() == {'sprig 0.1.9': 'skipped incomplete'}, 'nothing should be pending')
-    check(lab.snapshot() == before, 'Recover changed refs, PRs or Releases')
+    check(lab.snapshot() == before, 'Tag & Release Packages changed refs, PRs or Releases')
     tags = {key: git(lab.bare(key), 'tag', '--sort=v:refname').split() for key in NAMES}
     check(tags == {'sdk': ['0.1.0', '0.1.1', '0.2.0'], 'sprig': ['0.1.1', '0.1.2', '0.1.3'],
                    'firebase': ['0.1.0']}, str(tags))
     lab.records['publicTags'] = tags
-    lab.proved('two more Recover runs changed no ref, PR or Release; only the broken item is reported')
+    lab.proved('two more Tag & Release Packages runs changed no ref, PR or Release; only the broken item is reported')
 
 
 def step_9(lab):
@@ -672,12 +686,12 @@ def step_9(lab):
 STEPS = [
     ('bootstrap a README-only public repository', step_1),
     ('take over a foreign public repository', step_2),
-    ('release an integration: export, build, bot PR, merge, Recover tags it', step_3),
+    ('release an integration: export, build, bot PR, merge, Tag & Release Packages tags it', step_3),
     ('an integration-only release leaves the SDK untouched, and vice versa', step_4),
     ('an integration waits for its SDK tag, then continues', step_5),
     ('a broken item is skipped while the others complete', step_6),
     ('drift in a public repository blocks publishing', step_7),
-    ('Recover is idempotent', step_8),
+    ('Tag & Release Packages is idempotent', step_8),
     ('old tags still resolve for clean consumers', step_9),
 ]
 

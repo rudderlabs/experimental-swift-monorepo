@@ -7,6 +7,7 @@ import shutil
 import tempfile
 
 from common import OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, git, load, run, swift_options, text
+import release_notes
 
 BOT = 'rudderstack-github-actions[bot]'
 BOT_EMAIL = re.compile(r'[1-9][0-9]*\+' + re.escape(BOT) + r'@users\.noreply\.github\.com\Z')
@@ -111,8 +112,11 @@ def takeover_check(baseline, stage, target):
         raise ValueError('Takeover Package.swift differs semantically: ' + ', '.join(differences))
 
 
-def reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, mode='normal'):
-    """Return pending evidence or the exact verified merge commit. `prepare(full)` exports into `stage`."""
+def reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, mode='normal', package=None):
+    """Return pending evidence or the exact verified merge commit. `prepare(full)` exports into `stage`.
+
+    `package` (the inventory entry) supplies the display title and platforms of the PR text.
+    """
     branch = branch_for(key, version, mode)
     pr = find_pr(key, version, mode)
     if pr:
@@ -158,14 +162,18 @@ def reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, mod
             else:
                 child.unlink()
         shutil.copytree(stage, repo, dirs_exist_ok=True)
-        commit(repo, text('takeoverCommit' if mode == 'takeover' else 'commit', package=key, version=version))
+        commit(repo, text('takeoverCommit' if mode == 'takeover' else 'commit', version=version))
         git(repo, 'push', 'origin', f'HEAD:refs/heads/{branch}')
     removed = git(repo, 'diff', '--name-only', '--diff-filter=D', 'origin/main', 'HEAD').splitlines()
     notes = repo.parent / 'publication-pr.md'
+    changelog = (repo / 'CHANGELOG.md').read_text() if (repo / 'CHANGELOG.md').is_file() else ''
     notes.write_text(text({'takeover': 'takeoverPullRequestBody', 'bootstrap': 'bootstrapPullRequestBody'}
-                          .get(mode, 'pullRequestBody'), package=key, version=version, source=source,
+                          .get(mode, 'pullRequestBody'), version=version, source=source,
+                          title=release_notes.display_name(key, package),
+                          notes=release_notes.notes(key, package, version, changelog),
+                          platforms=', '.join((package or {}).get('platforms', [])) or 'the package defaults',
                           removed=text('removedFiles', files='\n'.join(f'- `{f}`' for f in removed)) if removed else ''))
-    title = text('takeoverPullRequestTitle' if mode == 'takeover' else 'pullRequestTitle', package=key, version=version)
+    title = text('takeoverPullRequestTitle' if mode == 'takeover' else 'pullRequestTitle', version=version)
     run(['gh', 'pr', 'create', '--repo', repository_for(key), '--base', RELEASE_BRANCH,
          '--head', branch, '--title', title, '--body-file', notes])
     pr = find_pr(key, version, mode)

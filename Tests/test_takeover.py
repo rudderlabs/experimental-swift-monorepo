@@ -206,12 +206,12 @@ class TakeoverTests(unittest.TestCase):
         self.assertEqual(git(self.remote, 'rev-parse', f'{head}:Sources/Kit/Kit.swift'),
                          git(self.remote, 'rev-parse', '1.0.0:Sources/Kit/Kit.swift'))
         self.assertEqual(git(self.remote, 'log', '-1', '--format=%an <%ae>', head), f'{BOT} <{EMAIL}>')
-        self.assertEqual(self.created[0]['title'], 'chore: take over experimental sprig 1.0.0')
+        self.assertEqual(self.created[0]['title'], 'chore: take over 1.0.0 from the monorepo')
         body = self.created[0]['body']
         for removed in ('Tests/KitTests/KitTests.swift', 'Example/App.swift', 'LICENSE.md', 'Package.resolved',
                         '.github/pull_request_template.md', '.swiftlint.yml'):
             self.assertIn(f'- `{removed}`', body)
-        for allowed in ('No `testTarget`', '`LICENSE.md`', 'experimental-rudder-sdk-swift', 'No tag'):
+        for allowed in ('No `testTarget`', '`LICENSE.md`', 'experimental-rudder-sdk-swift', 'No tag', 'Nothing is built'):
             self.assertIn(allowed, body)
         self.assertEqual(self.publish('takeover')['status'], 'awaiting_review')
         self.assertEqual(len(self.created), 1)
@@ -254,7 +254,8 @@ class TakeoverTests(unittest.TestCase):
         self.assertEqual((result['status'], result['branch'], result['mode']),
                          ('awaiting_review', 'publication/sprig/1.0.0', 'bootstrap'))
         self.assertIn('README-only', self.created[0]['body'])
-        self.assertEqual(self.created[0]['title'], 'chore: publish experimental sprig 1.0.0')
+        self.assertIn('run the Tag & Release Packages workflow to create the `1.0.0` tag', self.created[0]['body'])
+        self.assertEqual(self.created[0]['title'], 'chore(release): 1.0.0')
         self.assertEqual(git(self.remote, 'tag', '--list'), '')
         merged = self.merge('publication/sprig/1.0.0')
         result = self.publish()
