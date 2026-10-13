@@ -96,6 +96,10 @@ fi
 ROOT=$(git rev-parse --show-toplevel)
 BASE=origin/main
 
+# Pushing from a worktree, git exports GIT_DIR (and friends) to hooks. The tests
+# run git in temporary repos; inherited, those commands would write to this repo.
+unset $(git rev-parse --local-env-vars)
+
 run() {
     echo ""
     echo "[INFO] Running: make $*"

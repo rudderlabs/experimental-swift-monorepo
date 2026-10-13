@@ -133,7 +133,8 @@ class TakeoverTests(unittest.TestCase):
              patch('publish.run', side_effect=self.command), \
              patch('publish.ensure_release', return_value='https://example.invalid/release') as release, \
              patch('publish.find_pr', side_effect=lambda *a: self.pr), \
-             patch('reviewed_publication.find_pr', side_effect=lambda *a: self.pr), \
+             patch('reviewed_publication.find_pr',  # no abandon revert PR exists
+                   side_effect=lambda key, version, mode='normal': None if mode == 'abandon' else self.pr), \
              patch('reviewed_publication.run', side_effect=self.command):
             result = publish('sprig', self.expected['version'], mode=mode)
             self.released, self.validated = release.called, validate.called
@@ -181,7 +182,7 @@ class TakeoverTests(unittest.TestCase):
         self.assertEqual(result['packages']['sdk']['status'], 'published')
         self.assertEqual(result['packages']['sprig']['status'], 'awaiting_takeover')
         workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/publish.yml').read_text()
-        self.assertIn("'awaiting_dependency', 'awaiting_takeover'):", workflow)
+        self.assertIn("'awaiting_dependency', 'awaiting_takeover', 'abandoned'):", workflow)
 
     def test_takeover_refuses_while_workflows_exist(self):
         main = self.public({**FOREIGN, '.github/workflows/ci.yml': 'on: push\n'}, tag='1.0.0')

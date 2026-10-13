@@ -3,6 +3,8 @@
   "release-type": "simple",
   "include-v-in-tag": false,
   "include-component-in-tag": true,
+  "separate-pull-requests": true,
+  "pull-request-title-pattern": "chore(release):${component} ${version}",
   "changelog-sections": [
     {
       "type": "feat",

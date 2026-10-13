@@ -1,0 +1,31 @@
+name: Public Activity
+# Outside issues and PRs on the publication repositories, and public main commits after the latest tag,
+# become monorepo issues (one each, found again by a hidden marker). Reads public repositories; writes only
+# monorepo issues and labels, with the built-in token.
+on:
+  schedule:
+    - cron: '30 3 * * *' # 09:00 IST
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+concurrency:
+  group: public-activity
+  cancel-in-progress: false
+jobs:
+  mirror:
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Mirror public activity into monorepo issues
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/public_activity.py

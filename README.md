@@ -125,7 +125,8 @@ Resources keep their `process` or `copy` rule from `swift package dump-package`.
 
 ## Maintainer path
 
-Release Please targets `main` and owns version intent. It creates component tags such as `sdk-0.1.1` in the source repository.
+Release Please targets `main` and owns version intent. It opens one release PR per package, so a package can be released alone, and creates component tags such as `sdk-0.1.1` in the source repository.
+Release how-tos (release one package alone, `Release-As`, roll forward a bad version, public activity, sync back an outside PR, discard an unpublished version): [Maintainer how-tos](docs/reviewed-publication/README.md#maintainer-how-tos).
 The publisher emits plain tags such as `0.1.1` in the corresponding public package repository.
 Dependent integrations wait until their required SDK tag is available. The recovery workflow resumes pending publication.
 An integration-only release skips the SDK job.
@@ -139,7 +140,7 @@ The manual workflow is also the recovery entry point if Release Please outputs a
 Package states: `awaiting_review`, `awaiting_dependency`, `awaiting_takeover`, `published`, `incomplete`.
 A public repository without `.publication.json` waits as `awaiting_takeover` (other packages continue) until a person removes `.github/workflows` by PR and dispatches `publish.yml` with `mode=takeover`: one bot PR, no tag, `Sources/` byte-identical to the existing tag and `Package.swift` semantically equal. A README-only repository gets a bootstrap bot PR automatically (`mode=bootstrap` forces it).
 `anchor-package.yml` (manual: package, version, main SHA) creates a plain `<component>-<version>` tag and no Release, so nothing is queued or published.
-Every export adds a generated CONTRIBUTING.md, `.github/CODEOWNERS` (`* @rudderlabs/sdk_team`) and a README block linking to monorepo issues; `.publication.json` records a `transform` per file. No workflow file is ever exported.
+Every export adds a generated CONTRIBUTING.md, `.github/CODEOWNERS` (`* @rudderlabs/sdk_team`) and a README block that welcome issues and pull requests in the public repository (maintainers sync merged ones back); `.publication.json` records a `transform` per file. No workflow file is ever exported.
 Bot commits use the App identity `rudderstack-github-actions[bot]`; a merged version is verified against its own stored `.publication.json`, so Tag & Release Packages survives exporter changes.
 
 See [REMOTE-RUNBOOK.md](REMOTE-RUNBOOK.md) before remote execution.

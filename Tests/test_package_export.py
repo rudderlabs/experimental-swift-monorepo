@@ -102,13 +102,17 @@ class PackageExportTests(unittest.TestCase):
     def test_generated_contributing_codeowners_and_readme_block_are_hashed(self):
         output, _ = self.export("sprig")
         provenance = load(output / ".publication.json")
-        issues = "https://github.com/rudderlabs/experimental-swift-monorepo/issues/new/choose"
         self.assertEqual((output / ".github/CODEOWNERS").read_text(), "* @rudderlabs/sdk_team\n")
-        self.assertIn(issues, (output / "CONTRIBUTING.md").read_text())
-        self.assertIn("`sprig`", (output / "CONTRIBUTING.md").read_text())
+        # The monorepo is internal: issues and PRs go to the public repository, maintainers sync merged PRs back.
+        contributing = (output / "CONTRIBUTING.md").read_text()
+        self.assertIn("Issues and pull requests are welcome in this repository.", contributing)
+        self.assertIn("open a pull request here", contributing)
         readme = (output / "README.md").read_text()
         self.assertTrue(readme.startswith("# Fixture\n\n## Report issues / contribute\n"))
-        self.assertIn(f"[Report an issue or contribute]({issues})", readme)
+        self.assertIn("Issues and pull requests are welcome in this repository.", readme)
+        for text in (contributing, readme):
+            self.assertNotIn("experimental-swift-monorepo", text)
+            self.assertNotIn("not merged", text)
         for path in ("CONTRIBUTING.md", ".github/CODEOWNERS", "README.md"):
             self.assertEqual(provenance["fileHashes"][path], hashlib.sha256((output / path).read_bytes()).hexdigest())
         self.assertEqual([p for p in provenance["fileHashes"] if p.startswith(".github/")], [".github/CODEOWNERS"])

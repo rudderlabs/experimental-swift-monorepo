@@ -1,0 +1,75 @@
+name: Abandon Unpublished Version
+# Discards a merged publication PR whose version has no public tag: a bot revert PR returns public main to the
+# last published record; merging it abandons the version. Before merge, close the publication PR with label
+# `abandon` instead. A tagged version is refused: roll forward with a new release.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package key from release/allowlist.json and release/packages.json
+        type: string
+        required: true
+      version:
+        description: Merged, untagged version to discard (X.Y.Z)
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  abandon:
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: experimental-spm-release
+    # The publish.yml group: never races a publication of the same package.
+    concurrency:
+      group: experimental-publication-${{ inputs.package }}
+      cancel-in-progress: false
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Validate allowlisted package
+        id: preflight
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          python3 - <<'PYCODE'
+          import os, sys
+          sys.path.insert(0, 'scripts')
+          from common import allowlist
+          names = allowlist()
+          if os.environ['PACKAGE'] not in names:
+              raise SystemExit('Invalid package')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('repository=' + names[os.environ['PACKAGE']] + '\n')
+          PYCODE
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: ${{ steps.preflight.outputs.repository }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Configure publication bot identity
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          id="$(gh api '/users/rudderstack-github-actions%5Bbot%5D' --jq .id)"
+          [[ "$id" =~ ^[1-9][0-9]*$ ]] || { echo "Bot user id lookup failed"; exit 1; }
+          git config --global user.name "rudderstack-github-actions[bot]"
+          git config --global user.email "${id}+rudderstack-github-actions[bot]@users.noreply.github.com"
+      - name: Open or confirm the revert PR
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh auth setup-git
+          python3 scripts/reviewed_publication.py "$PACKAGE" "$VERSION"
