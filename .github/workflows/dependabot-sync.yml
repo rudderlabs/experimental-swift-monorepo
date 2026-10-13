@@ -1,4 +1,4 @@
-name: Dependabot marker sync
+name: Dependabot Sync
 # A Dependabot PR that changes a canonical requirement in Package.swift also needs the reviewed release
 # markers, and a releasable title for the packages whose markers changed (D27). Runs only repo scripts.
 on:

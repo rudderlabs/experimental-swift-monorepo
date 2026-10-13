@@ -318,8 +318,8 @@ def steps(result):
         "Path A, next steps:",
         f"1. Open the import PR \"{title}\" and {merge}"
         + (f"; state in its body: {result['source']} {what}. {non_code}." if ref else ".") + " Record the merge SHA.",
-        f"2. Run Actions > Anchor package (package={key}, version={tag}, sha=<merge SHA>) to create the plain tag "
-        f"{component}-{tag} on the merge commit (no Release).",
+        f"2. Run Actions > Anchor Imported Package (package={key}, version={tag}, sha=<merge SHA>) to create the plain "
+        f"tag {component}-{tag} on the merge commit (no Release).",
         f"3. Open \"build({key}): enable releases\": add {entry} to release-please-config.json and "
         f"\"{path}\": \"{tag}\" to .release-please-manifest.json; the dry run must show no {key} release; squash-merge.",
     ])

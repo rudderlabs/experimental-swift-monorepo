@@ -1,4 +1,4 @@
-name: Experimental Release Please
+name: Release Please
 on:
   push:
     branches: [main]

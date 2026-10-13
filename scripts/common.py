@@ -47,8 +47,7 @@ def write_json(path, value):
 
 def text(name, **values):
     """Every release, PR and commit text comes from release/texts.json in the trusted checkout."""
-    texts = load(ROOT / "release/texts.json")
-    return texts[name].format(ticket=texts["ticket"], **values)
+    return load(ROOT / "release/texts.json")[name].format(**values)
 
 
 def allowlist(root=ROOT):

@@ -33,6 +33,8 @@ def problems(root=ROOT):
         missing = [f for f in FIELDS if not package.get(f)]
         if missing:
             errors.append(f"{key}: missing {', '.join(missing)}")
+        if "title" in package and not (isinstance(package["title"], str) and package["title"].strip()):
+            errors.append(f"{key}: title must be a non-empty string (the public Release heading)")
         if names.get(key) != package.get("repository"):
             errors.append(f"{key}: repository {package.get('repository')!r} differs from allowlist {names.get(key)!r}")
     for field in ("path", "component"):

@@ -185,6 +185,17 @@ class PrePushTestPlanTests(unittest.TestCase):
         self.assertEqual(calls[0], "test-python")
         self.assertIn("Python tests", result.stdout)
 
+    def test_plan_hook_and_makefile_change_runs_only_the_python_tests(self):
+        # Like PR #32: the CI plan, this hook and the Makefile change no package job, so no package tests run.
+        self.assertIn('python3 scripts/ci_plan.py --base "$BASE"', (HOOKS / "pre-push").read_text())
+        for path in ["scripts/ci_plan.py", "scripts/git-hooks/pre-push", "Makefile"]:
+            with open(self.root / path, "a") as file:
+                file.write("\n# change\n")  # still valid Python, bash and make
+        git(self.root, "commit", "--quiet", "--no-verify", "-am", "ci: change the plan")
+        result, calls = self.push()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, ["test-python"])
+
     def test_failing_tests_block_the_push(self):
         self.change("Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift")
         (self.root.parent / "bin/make").write_text("#!/bin/bash\nexit 2\n")

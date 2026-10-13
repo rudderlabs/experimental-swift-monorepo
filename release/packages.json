@@ -17,6 +17,7 @@
       "repository": "experimental-integration-swift-firebase",
       "sdkMinimum": "1.0.0",
       "target": "RudderIntegrationFirebase",
+      "title": "RudderStack Firebase Integration",
       "toolsVersion": "5.9",
       "vendorProducts": [
         "FirebaseAnalytics",
@@ -60,6 +61,7 @@
         "Resources"
       ],
       "target": "RudderStackAnalytics",
+      "title": "RudderStack Swift SDK",
       "toolsVersion": "5.9"
     },
     "sprig": {
@@ -77,6 +79,7 @@
       "repository": "experimental-integration-swift-sprig",
       "sdkMinimum": "1.2.1",
       "target": "RudderIntegrationSprig",
+      "title": "RudderStack Sprig Integration",
       "toolsVersion": "5.9",
       "vendorProducts": [
         "UserLeapKit"

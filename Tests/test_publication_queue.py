@@ -22,14 +22,15 @@ FIXTURE = Path(__file__).resolve().parent / 'Fixtures' / 'demo'  # inventory and
 
 class PublicationQueueTests(unittest.TestCase):
     def run_queue(self, published=False, wrong_source=False, release_missing=False, open_pr=False,
-                  firebase=False):
+                  firebase=False, body=None, draft=False):
         sha, pub = 'a' * 40, 'b' * 40
         intents = [{'tag_name': 'integration-sprig-0.1.1', 'draft': False, 'prerelease': False},
                    {'tag_name': 'unrelated-1.0.0', 'draft': False, 'prerelease': False},
                    {'tag_name': 'sdk-0.2.0', 'draft': True, 'prerelease': False}]
         if firebase:
             intents.append({'tag_name': 'integration-firebase-0.1.1', 'draft': False, 'prerelease': False})
-        body = f'Temporary unsupported experiment.\n\nSource: {sha}\nPublication: {pub}\n'
+        # Releases 1.4.1, 1.0.1 and 1.1.3 were created with these earlier texts.
+        body = body or f'Temporary unsupported experiment.\n\nSource: {sha}\nPublication: {pub}\n'
         self.clones = []
         def command(args, **kwargs):
             if args[:2] == ['git', 'clone']:
@@ -37,7 +38,7 @@ class PublicationQueueTests(unittest.TestCase):
                 return ''
             if 'experimental-swift-monorepo/releases?' in args[-1]:
                 return json.dumps([intents])
-            return json.dumps([[{'tag_name': '0.1.1', 'draft': False, 'body': body}]]
+            return json.dumps([[{'tag_name': '0.1.1', 'draft': draft, 'body': body}]]
                               if published and not release_missing and 'sprig/releases?' in args[-1] else [[]])
         def git_command(repo, *args):
             if args[0] == 'rev-parse':
@@ -86,29 +87,63 @@ class PublicationQueueTests(unittest.TestCase):
                                          'status': 'awaiting_review'}])
         self.assertIn(call('sprig', '0.1.1'), self.find_pr)
 
-    def test_release_body_matches_the_publisher(self):
+    def test_modeled_release_is_written_once_and_kept(self):
         from common import text
-        self.assertEqual(text('releaseBody', source='a' * 40, publication='b' * 40),
-                         f'Temporary unsupported experiment.\n\nSource: {"a" * 40}\nPublication: {"b" * 40}\n')
+        from publish import ensure_release
         with tempfile.TemporaryDirectory() as temp:
-            from publish import ensure_release
-            path = ensure_release('sprig', '0.1.1', 'b' * 40, {'sourceCommit': 'a' * 40}, Path(temp) / 'remotes')
-            self.assertEqual(json.loads(Path(path).read_text())['body'],
-                             text('releaseBody', source='a' * 40, publication='b' * 40))
+            remotes = Path(temp) / 'remotes'
+            path = ensure_release('sprig', '0.1.1', 'b' * 40, remotes, lambda: 'Notes\n')
+            self.assertEqual(json.loads(Path(path).read_text())['body'], 'Notes\n')
+            self.assertEqual(json.loads(Path(path).read_text())['title'], text('releaseTitle', version='0.1.1'))
+            # A later run with other notes keeps the record; another commit for the tag is a conflict.
+            ensure_release('sprig', '0.1.1', 'b' * 40, remotes, lambda: self.fail('rendered again'))
+            with self.assertRaisesRegex(ValueError, 'conflicts'):
+                ensure_release('sprig', '0.1.1', 'c' * 40, remotes, lambda: '')
+
+    def test_existing_release_with_earlier_texts_is_accepted(self):
+        from publish import ensure_release
+        old = {'tag_name': '1.0.1', 'draft': False, 'name': 'Experimental 1.0.1', 'html_url': 'https://x/1.0.1',
+               'body': f'Temporary unsupported experiment.\n\nSource: {"a" * 40}\nPublication: {"b" * 40}\n'}
+        for releases, error in (([old], None), ([{**old, 'draft': True}], 'differs'), ([old, old], 'differs')):
+            with patch('publish.run', return_value=json.dumps([releases])) as command:
+                if error:
+                    with self.assertRaisesRegex(ValueError, error):
+                        ensure_release('sprig', '1.0.1', 'b' * 40, None, lambda: self.fail('rendered'))
+                else:
+                    self.assertEqual(ensure_release('sprig', '1.0.1', 'b' * 40, None,
+                                                    lambda: self.fail('rendered')), 'https://x/1.0.1')
+                self.assertEqual(command.call_count, 1)
+
+    def test_release_with_earlier_texts_counts_as_complete_but_a_draft_conflicts(self):
+        self.assertEqual(self.run_queue(published=True, body='# New format\n'), [])
+        self.assertEqual(self.skipped, [])
+        self.assertEqual(self.run_queue(published=True, draft=True), [])
+        self.assertEqual([(s['package'], s['status']) for s in self.skipped], [('sprig', 'incomplete')])
 
     def test_texts_have_one_source(self):
         texts = json.loads((ROOT / 'release/texts.json').read_text())
-        self.assertIn('linear.app/rudderstack/issue/SDK-5388', texts['ticket'])
         for name in ('commit', 'takeoverCommit', 'pullRequestTitle', 'takeoverPullRequestTitle', 'pullRequestBody',
-                     'bootstrapPullRequestBody', 'takeoverPullRequestBody', 'releaseTitle', 'releaseBody'):
+                     'bootstrapPullRequestBody', 'takeoverPullRequestBody', 'releaseTitle', 'notesHeading',
+                     'whatsChanged', 'pullRequestLine', 'fullChangelog', 'releaseFooter'):
             self.assertIn(name, texts)
-        for name in ('pullRequestBody', 'bootstrapPullRequestBody', 'takeoverPullRequestBody'):
-            self.assertIn('{ticket}', texts[name])
-        for path in ('publish.py', 'reviewed_publication.py', 'publication_queue.py'):
+        self.assertEqual(texts['commit'], 'chore(release): {version}')
+        self.assertEqual(texts['pullRequestTitle'], 'chore(release): {version}')
+        self.assertEqual(texts['releaseTitle'], '{version}')
+        for name, value in texts.items():
+            for fragment in ('sdk-5388', 'SDK-5388', 'linear.app', '{ticket}'):
+                self.assertNotIn(fragment, str(value), name)
+        for name in ('commit', 'takeoverCommit', 'pullRequestTitle', 'takeoverPullRequestTitle', 'releaseTitle',
+                     'notesHeading'):
+            self.assertNotIn('xperimental', texts[name], name)
+        for name in ('pullRequestBody', 'bootstrapPullRequestBody'):
+            self.assertIn('{notes}', texts[name])
+            self.assertIn('Built for: {platforms}', texts[name])
+            self.assertNotIn('anonymous Swift build', texts[name])
+        for path in ('publish.py', 'reviewed_publication.py', 'release_notes.py'):
             code = (ROOT / 'scripts' / path).read_text()
             self.assertRegex(code, r'from common import (\([^)]*|[^\n(]*)\btext\b')
             for fragment in ('Temporary unsupported', 'sdk-5388', 'SDK-5388', 'linear.app', 'publish experimental',
-                             'Experimental {'):
+                             'Experimental {', "## What's Changed", '**Full Changelog**'):
                 self.assertNotIn(fragment, code, path)
 
     def test_recover_workflow_has_no_inputs_and_scans_all_packages(self):
@@ -120,7 +155,7 @@ class PublicationQueueTests(unittest.TestCase):
         self.assertIn('step-security/harden-runner@', pending)
         self.assertIn('run: python3 scripts/publication_queue.py\n', pending)
         self.assertIn("if: ${{ !cancelled() && needs.pending.outputs.pending == 'true' }}", workflow)
-        self.assertIn('Merged a bot PR? Press Recover.', (ROOT / 'README.md').read_text())
+        self.assertIn('Merged a bot PR? Run Tag & Release Packages', (ROOT / 'README.md').read_text())
 
 
 if __name__ == '__main__':

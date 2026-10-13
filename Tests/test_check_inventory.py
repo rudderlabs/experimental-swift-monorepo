@@ -80,6 +80,18 @@ class InventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "zzz"):
             from_outputs(outputs, self.root)
 
+    def test_title_is_an_optional_non_empty_string(self):
+        self.edit("packages.json", lambda d: d["packages"]["sprig"].update(title="RudderStack Sprig Integration"))
+        self.assertEqual(problems(self.root), [])
+        for value in ("", "  ", 3):
+            self.edit("packages.json", lambda d: d["packages"]["sprig"].update(title=value))
+            self.assertIn("sprig: title must be a non-empty string (the public Release heading)", problems(self.root))
+
+    def test_real_packages_have_release_titles(self):
+        self.assertEqual({k: inventory()[k].get("title") for k in ("sdk", "sprig", "firebase")},
+                         {"sdk": "RudderStack Swift SDK", "sprig": "RudderStack Sprig Integration",
+                          "firebase": "RudderStack Firebase Integration"})
+
     def test_stale_generated_file_fails(self):
         labels = self.root / ".github/labels.json"
         labels.write_text(labels.read_text().replace("pkg:sprig", "pkg:old"))

@@ -256,7 +256,7 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(load(root / ".release-please-manifest.json"), {SDK: "1.4.0"})
         self.assertEqual(problems(root), [])
         self.assertEqual(markers(root, check=True), [])
-        for text in (title, "1. Open the import PR", "2. Run Actions > Anchor package (package=sprig, version=1.0.0",
+        for text in (title, "1. Open the import PR", "2. Run Actions > Anchor Imported Package (package=sprig, version=1.0.0",
                      "plain tag integration-sprig-1.0.0", '3. Open "build(sprig): enable releases"',
                      '"Integrations/Sprig": "1.0.0"'):
             self.assertIn(text, output)

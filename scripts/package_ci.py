@@ -1,10 +1,10 @@
-"""PR CI and developer commands for the packages: CI plan, iOS Simulator tests, export check, lint, hints.
+"""PR CI and developer commands for the packages: iOS Simulator tests, export check, lint, hints, ci-ok.
 
-`make test`, `make lint` and `make affected` and the ci.yml jobs call this file, so local runs and CI
-run the same commands.
+`make test`, `make lint` and the ci.yml jobs call this file, so local runs and CI run the same commands.
+The CI plan (which packages those jobs check) is ci_plan.py. Do not import it here: every script this file imports
+selects every package in the plan, so a plan-only change would run every package's tests.
 """
 import argparse
-import ast
 import contextlib
 import json
 import os
@@ -19,98 +19,17 @@ from common import ROOT, anonymous_env, git, inventory, run, url
 from dependency_policy import manifest
 from project import PLATFORM, export
 from publish import platform_builds
-from release_plan import affected
 
 TYPES = "feat|fix|refactor|perf|style|test|docs|chore|build|ci|revert"
 TITLE = re.compile(rf"(?:{TYPES})\((?P<scope>[^)]*)\)!?: ")
 PICK_SIMULATOR = ROOT / "scripts/ci/pick-simulator.sh"
 # Per-package test scheme, written for each `test (<key>)` run and removed after it (test_scheme).
 SCHEME = "package-ci-{}"
-# PR CI selection (D34). A trailing slash matches a folder. The scripts package_ci.py imports also count as BUILD.
-# release/packages.json is not BUILD: changed_entries() selects the packages whose entry changed.
-INVENTORY = "release/packages.json"
-BUILD = ("Package.swift", "Package.resolved", ".swiftlint.yml", "release/allowlist.json", ".github/workflows/ci.yml",
-         "scripts/ci/")
-EXPORT = ("LICENSE", "release/templates/")
-POLICY = ("scripts/", "release/", "Tests/", ".github/", "Shared/", "Makefile", "Package.swift", "Package.resolved",
-          ".release-please-manifest.json", "release-please-config.json")
-POLICY_FILES = ("dependency-requirements.json", "shared-source.json")
 
 
 def matrix(root=ROOT):
     """Package keys for the `test (<key>)` and `export (<key>)` matrices; `[]` skips both."""
     return list(inventory(root))
-
-
-def matches(path, patterns):
-    return any(path == p or (p.endswith("/") and path.startswith(p)) for p in patterns)
-
-
-def imported():
-    """scripts/ modules that package_ci.py imports, directly or not: each changes how every package is checked."""
-    found, pending = set(), ["package_ci"]
-    while pending:
-        path = f"scripts/{pending.pop()}.py"
-        if path in found or not (ROOT / path).is_file():
-            continue
-        found.add(path)
-        for node in ast.walk(ast.parse((ROOT / path).read_text())):
-            if isinstance(node, ast.ImportFrom) and node.module:
-                pending.append(node.module)
-            elif isinstance(node, ast.Import):
-                pending += [alias.name for alias in node.names]
-    return found
-
-
-def dependents(keys, packages):
-    """`keys` plus every package that depends on one of them, directly or not (inventory policies, D18)."""
-    result = set(keys)
-    while True:
-        more = {k for k, p in packages.items() if k not in result
-                and any(v.get("package") in result for v in p.get("policies", {}).values())}
-        if not more:
-            return result
-        result |= more
-
-
-def changed_entries(root=ROOT, base_ref="HEAD"):
-    """Keys whose release/packages.json entry was added, removed or changed since `base_ref` (parsed JSON, so
-    whitespace and key order do not count); `None` (every package) when a field outside `packages` changed or the
-    file is missing or unreadable at `base_ref`."""
-    try:
-        before = json.loads(git(root, "show", f"{base_ref}:{INVENTORY}"))
-        old = before.pop("packages")
-    except (RuntimeError, ValueError, KeyError, AttributeError):
-        return None
-    after = json.loads(git(root, "show", f"HEAD:{INVENTORY}"))  # committed, like the changed paths
-    new = after.pop("packages")
-    if before != after:
-        return None
-    return {k for k in old.keys() | new.keys() if old.get(k) != new.get(k)}
-
-
-def ci_plan(paths, root=ROOT, base_ref="HEAD"):
-    """Packages to test and export and whether the policy job runs; `paths=None` (push to main) checks everything.
-
-    Shared build inputs select every package, LICENSE and release templates every export, docs nothing. Other paths
-    select their package (release_plan.affected), and tests also cover the packages that depend on it. A
-    release/packages.json change selects the packages whose entry changed (changed_entries), the same way.
-    """
-    packages = inventory(root)
-    every = list(packages)
-    if paths is None:
-        return {"test": every, "export": every, "policy": True}
-    policy = any(matches(p, POLICY) or p.rsplit("/", 1)[-1] in POLICY_FILES for p in paths)
-    build = imported()
-    entries = changed_entries(root, base_ref) if INVENTORY in paths else set()
-    if entries is None or any(matches(p, BUILD) or p in build for p in paths):
-        return {"test": every, "export": every, "policy": policy}
-    code = [p for p in paths if p != INVENTORY and not matches(p, EXPORT) and not p.endswith(".md")
-            and not p.startswith("docs/")]
-    direct = (affected(code, root, base_ref) if code else []) + [k for k in every if k in entries]
-    test = dependents(direct, packages)
-    export = every if any(matches(p, EXPORT) for p in paths) else direct
-    return {"test": [k for k in every if k in test], "export": [k for k in every if k in export], "policy": policy}
 
 
 def test_targets(data, package):
@@ -263,15 +182,6 @@ def export_check(key, root=ROOT):
         print(f"export ({key}): generic iOS build passed")
 
 
-def base_commit(base, root=ROOT):
-    return git(root, "merge-base", base, "HEAD")
-
-
-def changed(base, root=ROOT):
-    """Paths this branch changes since it left `base` (committed only)."""
-    return git(root, "diff", "--name-only", base_commit(base, root), "HEAD").splitlines()
-
-
 def lint(paths=None, root=ROOT, strict=False, reporter=None):
     """SwiftLint with the root .swiftlint.yml; `paths=None` lints the repository. Nothing to lint is a pass."""
     if paths is not None and not paths:
@@ -296,7 +206,7 @@ def lint(paths=None, root=ROOT, strict=False, reporter=None):
 
 def changed_swift(base, root=ROOT):
     """Changed, uncommitted and untracked .swift files that still exist."""
-    paths = set(git(root, "diff", "--name-only", base_commit(base, root)).splitlines())
+    paths = set(git(root, "diff", "--name-only", git(root, "merge-base", base, "HEAD")).splitlines())
     paths |= set(git(root, "ls-files", "--others", "--exclude-standard").splitlines())
     return sorted(p for p in paths if p.endswith(".swift") and (root / p).is_file())
 
@@ -323,16 +233,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("matrix", help="package keys as JSON")
-    command = commands.add_parser("ci-plan", help="packages to test and export, and whether policy runs, as JSON")
-    group = command.add_mutually_exclusive_group(required=True)
-    group.add_argument("--base", help="PR base: check what this branch changes since it left BASE")
-    group.add_argument("--all", action="store_true", help="push to main: check everything")
     command = commands.add_parser("test", help="iOS Simulator tests")
     command.add_argument("--package", action="append")
     commands.add_parser("export-check", help="export, manifest check and iOS build").add_argument(
         "--package", required=True)
-    command = commands.add_parser("affected", help="packages this branch changes since BASE")
-    command.add_argument("--base", default="origin/main")
     command = commands.add_parser("lint", help="SwiftLint on changed files, or --all")
     command.add_argument("--base", default="origin/main")
     command.add_argument("--all", action="store_true")
@@ -346,19 +250,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "matrix":
         print(json.dumps(matrix(), separators=(",", ":")))
-    elif args.command == "ci-plan":
-        plan = ci_plan(None) if args.all else ci_plan(changed(args.base), base_ref=base_commit(args.base))
-        if os.environ.get("GITHUB_OUTPUT"):
-            with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-                for name, value in plan.items():
-                    output.write(f"{name}={json.dumps(value, separators=(',', ':'))}\n")
-        print(json.dumps(plan))
     elif args.command == "test":
         test(args.package)
     elif args.command == "export-check":
         export_check(args.package)
-    elif args.command == "affected":
-        print(json.dumps(affected(changed(args.base), base_ref=base_commit(args.base))))
     elif args.command == "lint":
         return lint(None if args.all else changed_swift(args.base), strict=args.strict, reporter=args.reporter)
     elif args.command == "scope-hint":

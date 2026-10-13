@@ -1,4 +1,4 @@
-name: Anchor package
+name: Anchor Imported Package
 # A plain git tag where an imported package starts (D21). No GitHub Release, so nothing is queued or published.
 on:
   workflow_dispatch:

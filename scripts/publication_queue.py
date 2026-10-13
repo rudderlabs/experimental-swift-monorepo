@@ -1,10 +1,10 @@
-"""Recover pending publication from durable source component releases."""
+"""Complete pending publication from durable source component releases."""
 import json
 import os
 from pathlib import Path
 import tempfile
 
-from common import ROOT, OWNER, SOURCE_NAME, git, inventory, run, text, url
+from common import ROOT, OWNER, SOURCE_NAME, git, inventory, run, url
 from project import SEMVER
 from publish import verify_tree
 from reviewed_publication import find_pr
@@ -21,14 +21,14 @@ def state(repo, key, version, sha, public_releases):
             raise ValueError('Published tag conflicts with source release intent')
         publication_sha = git(repo, 'rev-parse', 'HEAD')
         git(repo, 'merge-base', '--is-ancestor', publication_sha, 'origin/main')
-        body = text('releaseBody', source=sha, publication=publication_sha)
+        # The verified tag carries the provenance; Release notes are presentation (see publish.ensure_release).
         matches = [r for r in public_releases if r['tag_name'] == version]
         if matches:
-            if len(matches) != 1 or matches[0]['draft'] or matches[0]['body'] != body:
+            if len(matches) != 1 or matches[0]['draft']:
                 raise ValueError('Existing public Release metadata conflicts')
             return None
         return 'pending'
-    # An open bot PR waits for review; Recover never rebuilds it.
+    # An open bot PR waits for review; Tag & Release Packages never rebuilds it.
     pr = find_pr(key, version)
     return 'awaiting_review' if pr and pr['state'] == 'open' else 'pending'
 
@@ -96,6 +96,6 @@ if __name__ == '__main__':
             output.write('broken=' + str(bool(broken)).lower() + '\n')
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-            summary.write('Recover queue\n\n```json\n' + json.dumps({'pending': plan, 'skipped': skipped}, indent=2)
-                          + '\n```\n')
+            summary.write('Tag & Release Packages queue\n\n```json\n'
+                          + json.dumps({'pending': plan, 'skipped': skipped}, indent=2) + '\n```\n')
     print(text_plan)

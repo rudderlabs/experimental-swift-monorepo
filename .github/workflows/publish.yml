@@ -1,4 +1,4 @@
-name: Publish experimental SwiftPM package
+name: Publish Package
 on:
   workflow_dispatch:
     inputs:
