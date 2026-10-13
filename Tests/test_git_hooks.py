@@ -203,6 +203,14 @@ class PrePushTestPlanTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("Tests failed (make test PKG=sprig)", result.stdout)
 
+    def test_tests_never_see_the_pushing_repository_git_dir(self):
+        # Git exports GIT_DIR to hooks when pushing from a worktree; the test suite must not inherit it.
+        (self.root.parent / "bin" / "make").write_text(f'#!/bin/bash\necho "GIT_DIR=${{GIT_DIR-}}" >> "{self.log}"\n')
+        self.change("Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift")
+        result, calls = self.push(env={"GIT_DIR": str(self.root / ".git")})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, ["GIT_DIR="])
+
     def test_without_a_terminal_tests_are_skipped(self):
         self.change("Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift")
         result, calls = self.push(env={"PRE_PUSH_FORCE_TESTS": ""})
