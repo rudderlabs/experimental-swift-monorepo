@@ -10,13 +10,10 @@ import tempfile
 
 from common import (ROOT, OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, file_hashes, git,
                     inventory, load, mirrors, run, swift_options, text, url, write_json)
-from project import export
+from maintenance_branch import line, public_base, semver, source_line
+from project import SEMVER, export, platform_builds
 import release_notes
 from reviewed_publication import MODES, Abandoned, WORKFLOWS, find_pr, layout, reviewed_commit, takeover_check, verify_merged
-
-DESTINATIONS = {"iOS": "iOS", "macOS": "macOS", "macCatalyst": "macOS,variant=Mac Catalyst",
-                "tvOS": "tvOS", "watchOS": "watchOS", "visionOS": "visionOS"}
-
 
 @contextlib.contextmanager
 def publication_lock(mirror_root, name):
@@ -56,17 +53,18 @@ def tag_exists(repo, version):
     return f"refs/tags/{version}" in git(repo, "for-each-ref", "--format=%(refname)", "refs/tags").splitlines()
 
 
-def platform_builds(stage, package, state):
-    # PR CI builds only the iOS Simulator. Generic device destinations need no simulator runtime or signing.
-    for platform in package["platforms"]:
-        destination = "generic/platform=" + DESTINATIONS[platform.split()[0]]
-        try:
-            run(["xcodebuild", "build", "-quiet", "-scheme", package["target"], "-destination", destination,
-                 "-scmProvider", "system", "-disablePackageRepositoryCache",
-                 "-clonedSourcePackagesDirPath", state / "xcode-packages", "-packageCachePath", state / "xcode-cache",
-                 "-derivedDataPath", state / "xcode-build", "CODE_SIGNING_ALLOWED=NO"], cwd=stage, env=anonymous_env())
-        except RuntimeError as error:
-            raise RuntimeError(f"Release build failed for {platform} ({destination})\n{error}") from error
+def versions(repo):
+    """Plain X.Y.Z tags of the publication repository (pre-release tags do not count)."""
+    return [t for t in git(repo, "for-each-ref", "--format=%(refname:short)", "refs/tags").splitlines()
+            if SEMVER.fullmatch(t)]
+
+
+def base_start(repo, version):
+    """A missing public `release/X.Y.x` starts at the tag of the latest X.Y.* version below `version`."""
+    older = [t for t in versions(repo) if line(t) == line(version) and semver(t) < semver(version)]
+    if not older:
+        raise ValueError("No public {}.{}.* tag to start the maintenance base from".format(*line(version)))
+    return git(repo, "rev-parse", f"refs/tags/{max(older, key=semver)}^{{commit}}")
 
 
 def validate(stage, state, mirror_root, package):
@@ -82,13 +80,14 @@ def validate(stage, state, mirror_root, package):
     return output
 
 
-def ensure_release(key, version, sha, mirror_root, render):
+def ensure_release(key, version, sha, mirror_root, render, latest=True):
     """Create the GitHub Release for the served tag, or accept the one that exists.
 
     An existing Release counts when it is the only one for the tag and not a draft. Its title and notes are
     presentation, not provenance: the tag and its `.publication.json` were verified before this point, people may
     edit notes, the What's Changed section is best effort, and Releases made with earlier texts must still recover.
-    `render()` returns the notes; it runs only when a Release is created.
+    `render()` returns the notes; it runs only when a Release is created. `latest=False` keeps a maintenance
+    Release below a higher version from becoming "Latest"; otherwise GitHub decides, as before.
     """
     name = allowlist()[key]
     if mirror_root:
@@ -114,7 +113,8 @@ def ensure_release(key, version, sha, mirror_root, render):
         path = Path(temp) / "release.md"
         path.write_text(render())
         return run(["gh", "release", "create", version, "--repo", repo, "--verify-tag",
-                    "--title", text("releaseTitle", version=version), "--notes-file", path])
+                    "--title", text("releaseTitle", version=version), "--notes-file", path,
+                    *([] if latest else ["--latest=false"])])
 
 
 def release_text(repo, key, package, version, sha, provenance, online):
@@ -163,6 +163,10 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
         stage, repo = temp / "export", temp / "publication"
         package = inventory(root)[key]
         source = source_commit(root)
+        # The source line picks the publication base: main, or release/X.Y.x for a release/<key>-X.Y.x commit.
+        base = RELEASE_BRANCH if mirror_root else public_base(source_line(root, key, source, version), version)
+        if base != RELEASE_BRANCH and mode != "normal":
+            raise ValueError("A maintenance line publishes in mode normal only")
 
         def prepare(full):
             # Export only when a version is not merged yet; merged versions use stored provenance (D25).
@@ -179,20 +183,24 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
 
         run(["git", "clone", "--no-checkout", remote, repo])
         existing = tag_exists(repo, version)
-        publication_ref = f"refs/remotes/origin/{RELEASE_BRANCH}"
+        publication_ref = f"refs/remotes/origin/{base}"
         has_branch = publication_ref in git(
             repo, "for-each-ref", "--format=%(refname)", publication_ref
         ).splitlines()
+        # A new maintenance base is pushed only right before its first PR; until then it is checked at the tag.
+        start = base_start(repo, version) if not (has_branch or existing) and base != RELEASE_BRANCH else None
         state = None
-        if has_branch:
-            git(repo, "checkout", "-B", RELEASE_BRANCH, publication_ref)
+        if has_branch or start:
+            git(repo, "checkout", "-B", base, start or publication_ref)
             state = layout(repo)
             if state == "generated":
                 # A separate export: `stage` must stay empty for prepare().
                 verify_tree(repo, lambda: export(key, version, temp / "synced-check", root)["fileHashes"])
         if mirror_root is None:
-            if not has_branch:
-                raise ValueError("Reviewed publication requires a seeded main branch")
+            if not (has_branch or start):
+                raise ValueError(f"Reviewed publication requires a seeded {base} branch")
+            if base != RELEASE_BRANCH and state != "generated":
+                raise ValueError(f"Maintenance base {base} has no provenance")
             if state == "foreign" and mode != "takeover":
                 if mode == "bootstrap":
                     raise ValueError("Bootstrap needs a README-only publication repository")
@@ -209,20 +217,25 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
                 raise ValueError("Existing tag conflicts with source, version, policy, or file hashes") from error
             sha = git(repo, "rev-parse", "HEAD")
             if mirror_root is None:
-                git(repo, "merge-base", "--is-ancestor", sha, "origin/main")
+                git(repo, "merge-base", "--is-ancestor", sha, f"origin/{base}")
         elif mirror_root is None:
             # Dependency readiness is a waiting state, not permission to publish a broken package.
             minimum = package.get("sdkMinimum")
             if minimum and not run(["git", "ls-remote", url("sdk"), f"refs/tags/{minimum}"]):
                 return waiting("awaiting_dependency", key, version, source, dependency="sdk", minimum=minimum)
+            if start:
+                # The bot creates the maintenance base once, at the verified tag of the line's latest version.
+                git(repo, "push", "origin", f"{start}:refs/heads/{base}")
+                git(repo, "fetch", "--no-tags", "origin", f"+refs/heads/{base}:{publication_ref}")
             kind = "bootstrap" if state == "readme-only" else "normal"
             try:
-                sha, pr = reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, kind, package)
+                sha, pr = reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, kind, package,
+                                          base)
             except Abandoned:
                 return waiting("abandoned", key, version, source)
             if sha is None:
                 return waiting("awaiting_review", key, version, source, pullRequest=pr["html_url"],
-                               pullRequestNumber=pr["number"], branch=pr["head"]["ref"], mode=kind)
+                               pullRequestNumber=pr["number"], branch=pr["head"]["ref"], mode=kind, base=base)
             expected = load(repo / ".publication.json")
             if interrupt == "after-commit":
                 raise InterruptedError("Injected interruption after verified PR merge")
@@ -260,11 +273,13 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
             raise ValueError("Served publication tag differs from validated commit")
         if interrupt == "after-tag":
             raise InterruptedError("Injected interruption after tag push")
+        # A maintenance Release never becomes "Latest" over a higher public version; main keeps GitHub's default.
+        latest = base == RELEASE_BRANCH or not any(semver(t) > semver(version) for t in versions(repo))
         release_url = ensure_release(key, version, sha, mirror_root, lambda: release_text(
-            repo, key, package, version, sha, expected, online=mirror_root is None))
+            repo, key, package, version, sha, expected, online=mirror_root is None), latest)
         return {"status": "published", "package": key, "version": version, "sourceCommit": expected["sourceCommit"],
                 "publicationCommit": sha, "tag": version, "release": release_url,
-                "reusedTag": existing, "branch": RELEASE_BRANCH,
+                "reusedTag": existing, "branch": base,
                 "transport": "local-git" if mirror_root else "github"}
 
 

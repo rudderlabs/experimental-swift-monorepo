@@ -76,7 +76,7 @@ class CiPlanTests(unittest.TestCase):
     def test_shared_build_inputs_select_every_package(self):
         for path in ["Package.swift", "Package.resolved", ".swiftlint.yml", "release/allowlist.json",
                      ".github/workflows/ci.yml", "scripts/ci/pick-simulator.sh", "scripts/package_ci.py",
-                     "scripts/project.py", "scripts/common.py", "scripts/publish.py"]:
+                     "scripts/project.py", "scripts/common.py", "scripts/dependency_policy.py"]:
             plan = self.plan(path, self.sprig)
             self.assertEqual((plan["test"], plan["export"]), (self.every, self.every), path)
         self.assertEqual(self.plan(".swiftlint.yml")["policy"], False)
@@ -112,8 +112,13 @@ class CiPlanTests(unittest.TestCase):
     def test_build_scripts_are_what_the_package_job_runner_imports(self):
         build = imported()
         self.assertIn("scripts/package_ci.py", build)
-        self.assertIn("scripts/publish.py", build)  # export check builds the exported package with publish.py
+        self.assertIn("scripts/project.py", build)  # export check builds the exported package with project.py
         self.assertNotIn("scripts/ci_plan.py", build)
+        # The release flow is not a package build input: a release-script change runs only the Python tests.
+        for path in ["scripts/publish.py", "scripts/reviewed_publication.py", "scripts/publication_queue.py",
+                     "scripts/maintenance_branch.py", "scripts/release_notes.py", "scripts/sync_back.py"]:
+            self.assertNotIn(path, build)
+            self.assertEqual(self.plan(path), {"test": [], "export": [], "policy": True}, path)
         # If package_ci.py imported ci_plan.py, every plan change would select every package again.
         tree = ast.parse((ROOT / "scripts/package_ci.py").read_text())
         modules = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}

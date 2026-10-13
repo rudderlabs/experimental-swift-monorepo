@@ -10,7 +10,7 @@ on:
         type: string
         required: true
       source_sha:
-        description: Full reviewed source commit SHA on main
+        description: Full reviewed source commit SHA on main or on the maintenance branch release/<key>-X.Y.x
         type: string
         required: true
       mode:
@@ -54,7 +54,8 @@ permissions:
   contents: read
 jobs:
   publish:
-    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    # main, or Release Please on a pushed maintenance branch release/<key>-X.Y.x (the script validates the line).
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && (github.ref == 'refs/heads/main' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')))
     outputs:
       status: ${{ steps.verified.outputs.status }}
       package: ${{ steps.verified.outputs.package }}
@@ -88,21 +89,29 @@ jobs:
         id: preflight
         env:
           PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           python3 - <<'PYCODE'
-          import os, re, subprocess, sys
+          import os, re, sys
           from pathlib import Path
           sys.path.insert(0, 'scripts')
           from common import allowlist, inventory
+          from maintenance_branch import source_line
+          from project import SEMVER
           key = os.environ['PACKAGE']
           sha = os.environ['SOURCE_SHA']
+          version = os.environ['VERSION']
           names = allowlist()
-          if key not in names or not re.fullmatch('[0-9a-f]{40}', sha):
-              raise SystemExit('Invalid package or source SHA')
+          if key not in names or not re.fullmatch('[0-9a-f]{40}', sha) or not SEMVER.fullmatch(version):
+              raise SystemExit('Invalid package, version or source SHA')
           if inventory(Path('.lab/release-source')).get(key, {}).get('repository') != names[key]:
               raise SystemExit('Package is not in the source inventory with its allowlisted repository')
-          subprocess.run(['git','-C','.lab/release-source','merge-base','--is-ancestor',sha,'origin/main'],check=True)
+          # On origin/main, or on origin/release/<key>-X.Y.x for the version's X.Y; anything else stops here.
+          try:
+              print('Source line: ' + source_line(Path('.lab/release-source'), key, sha, version))
+          except ValueError as error:
+              raise SystemExit(str(error))
           with open(os.environ['GITHUB_OUTPUT'],'a') as output:
               output.write('repository=' + names[key] + '\n')
           PYCODE

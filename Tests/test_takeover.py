@@ -130,6 +130,7 @@ class TakeoverTests(unittest.TestCase):
              patch('publish.inventory', return_value={'sprig': {
                  'repository': 'experimental-integration-swift-sprig', 'target': 'Kit'}}), \
              patch('publish.validate') as validate, patch('publish.source_commit', return_value='a' * 40), \
+             patch('publish.source_line', return_value='main'), \
              patch('publish.run', side_effect=self.command), \
              patch('publish.ensure_release', return_value='https://example.invalid/release') as release, \
              patch('publish.find_pr', side_effect=lambda *a: self.pr), \

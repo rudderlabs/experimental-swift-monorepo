@@ -63,6 +63,23 @@ def graph(root):
     return {t["name"]: t for t in data["targets"]}
 
 
+DESTINATIONS = {"iOS": "iOS", "macOS": "macOS", "macCatalyst": "macOS,variant=Mac Catalyst",
+                "tvOS": "tvOS", "watchOS": "watchOS", "visionOS": "visionOS"}
+
+
+def platform_builds(stage, package, state):
+    # PR CI builds only the iOS Simulator. Generic device destinations need no simulator runtime or signing.
+    for platform in package["platforms"]:
+        destination = "generic/platform=" + DESTINATIONS[platform.split()[0]]
+        try:
+            run(["xcodebuild", "build", "-quiet", "-scheme", package["target"], "-destination", destination,
+                 "-scmProvider", "system", "-disablePackageRepositoryCache",
+                 "-clonedSourcePackagesDirPath", state / "xcode-packages", "-packageCachePath", state / "xcode-cache",
+                 "-derivedDataPath", state / "xcode-build", "CODE_SIGNING_ALLOWED=NO"], cwd=stage, env=anonymous_env())
+        except RuntimeError as error:
+            raise RuntimeError(f"Release build failed for {platform} ({destination})\n{error}") from error
+
+
 def platforms(package):
     """Render the package's own `platforms` and `toolsVersion`; the root manifest is never copied."""
     values, tools = package.get("platforms", []), package.get("toolsVersion", "")
