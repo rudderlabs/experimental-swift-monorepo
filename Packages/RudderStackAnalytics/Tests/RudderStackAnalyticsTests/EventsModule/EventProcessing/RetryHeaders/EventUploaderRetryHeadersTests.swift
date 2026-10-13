@@ -91,10 +91,11 @@ class EventUploaderRetryHeadersTests {
     func testRecordFailureCalledOnRetryableError() async throws {
         guard let dataItem = await prepareBatchDataItem() else { return }
         
-        let callCount = RequestCounter()
+        var callCount = 0
         MockProvider.setupMockURLSession()
         MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { _ in
-            if callCount.increment() == 1 {
+            callCount += 1
+            if callCount == 1 {
                 return (statusCode: 502, data: nil, headers: nil)
             }
             return (statusCode: 200, data: "{}".data(using: .utf8), headers: nil)
@@ -152,10 +153,11 @@ class EventUploaderRetryHeadersTests {
     func testPrepareHeadersCalledOnRetryAttempt() async throws {
         guard let dataItem = await prepareBatchDataItem() else { return }
         
-        let callCount = RequestCounter()
+        var callCount = 0
         MockProvider.setupMockURLSession()
         MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { _ in
-            if callCount.increment() == 1 {
+            callCount += 1
+            if callCount == 1 {
                 return (statusCode: 502, data: nil, headers: nil)
             }
             return (statusCode: 200, data: "{}".data(using: .utf8), headers: nil)

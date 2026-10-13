@@ -322,10 +322,11 @@ extension SourceConfigProviderTests {
     }
     
     private func prepareMockUrlSessionWithEventualSuccess(failureCount: Int) -> URLSession {
-        let attemptCount = RequestCounter()
+        var attemptCount = 0
         
         MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { [self] _ in
-            if attemptCount.increment() <= failureCount {
+            attemptCount += 1
+            if attemptCount <= failureCount {
                 // Return 500 error for first few attempts
                 let json = ["error": "Server error", "code": 500]
                 let data = json.jsonString?.utf8Data
