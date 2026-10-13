@@ -37,6 +37,7 @@ class EventUploaderTests {
     deinit {
         MockProvider.teardownMockURLSession()
         eventUploader.stop()
+        analytics.shutdown()
         let storage = mockStorage
         Task.detached {
             await storage.removeAll()
@@ -118,7 +119,7 @@ class EventUploaderTests {
         
         // Configure mock to return 400 error (non-retryable)
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             return (statusCode: 400, data: nil, headers: nil)
         }
@@ -145,10 +146,9 @@ class EventUploaderTests {
         var callCount = 0
         // Configure mock to return 502 error
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             callCount += 1
-            
             if callCount == 1 {
                 return (statusCode: 502, data: nil, headers: nil)
             } else {
@@ -181,7 +181,7 @@ class EventUploaderTests {
         
         // Configure mock to simulate network unavailable
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             callCount += 1
             if callCount == 1 {
@@ -215,7 +215,7 @@ class EventUploaderTests {
         
         // Configure mock to simulate timeout
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             callCount += 1
             if callCount == 1 {
@@ -262,7 +262,7 @@ class EventUploaderTests {
         
         // Configure mock to return 401 error (invalid write key)
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             callCount += 1
             return (statusCode: 401, data: nil, headers: nil)
@@ -293,7 +293,7 @@ class EventUploaderTests {
         
         // Configure mock to return 404 error (source not found)
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             callCount += 1
             return (statusCode: 404, data: nil, headers: nil)
@@ -324,7 +324,7 @@ class EventUploaderTests {
         
         // Configure mock to return 413 error (payload too large)
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             callCount += 1
             return (statusCode: 413, data: nil, headers: nil)
@@ -354,7 +354,7 @@ class EventUploaderTests {
         
         // Configure mock to return success
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             callCount += 1
             let successResponse = """

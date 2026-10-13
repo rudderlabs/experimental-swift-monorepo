@@ -108,6 +108,7 @@ jobs:
         with:
           persist-credentials: false
       # xcodebuild test on the first available iPhone of the newest iOS runtime (scripts/ci/pick-simulator.sh).
+      # A temporary per-package scheme builds only that package's test targets (package_ci.py test_scheme).
       - name: iOS Simulator tests
         run: python3 scripts/package_ci.py test --package "$PACKAGE"
         env:

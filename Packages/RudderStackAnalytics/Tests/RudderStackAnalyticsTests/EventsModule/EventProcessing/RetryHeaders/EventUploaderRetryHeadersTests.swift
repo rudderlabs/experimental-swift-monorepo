@@ -41,6 +41,7 @@ class EventUploaderRetryHeadersTests {
     deinit {
         MockProvider.teardownMockURLSession()
         eventUploader.stop()
+        analytics.shutdown()
         let storage = mockStorage
         Task.detached {
             await storage.removeAll()
@@ -53,7 +54,7 @@ class EventUploaderRetryHeadersTests {
         guard let dataItem = await prepareBatchDataItem() else { return }
         
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { _ in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { _ in
             return (statusCode: 200, data: "{}".data(using: .utf8), headers: nil)
         }
         
@@ -74,7 +75,7 @@ class EventUploaderRetryHeadersTests {
         
         var capturedRequest: URLRequest?
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             capturedRequest = request
             return (statusCode: 200, data: "{}".data(using: .utf8), headers: nil)
         }
@@ -92,7 +93,7 @@ class EventUploaderRetryHeadersTests {
         
         var callCount = 0
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { _ in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { _ in
             callCount += 1
             if callCount == 1 {
                 return (statusCode: 502, data: nil, headers: nil)
@@ -111,7 +112,7 @@ class EventUploaderRetryHeadersTests {
         guard let dataItem = await prepareBatchDataItem() else { return }
         
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { _ in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { _ in
             return (statusCode: 400, data: nil, headers: nil)
         }
         
@@ -125,7 +126,7 @@ class EventUploaderRetryHeadersTests {
         guard let dataItem = await prepareBatchDataItem() else { return }
         
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { _ in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { _ in
             return (statusCode: 200, data: "{}".data(using: .utf8), headers: nil)
         }
         
@@ -139,7 +140,7 @@ class EventUploaderRetryHeadersTests {
         guard let dataItem = await prepareBatchDataItem() else { return }
         
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { _ in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { _ in
             return (statusCode: 400, data: nil, headers: nil)
         }
         
@@ -154,7 +155,7 @@ class EventUploaderRetryHeadersTests {
         
         var callCount = 0
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { _ in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { _ in
             callCount += 1
             if callCount == 1 {
                 return (statusCode: 502, data: nil, headers: nil)

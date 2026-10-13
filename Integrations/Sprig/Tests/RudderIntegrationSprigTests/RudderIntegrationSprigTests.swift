@@ -51,7 +51,18 @@ struct SprigIntegrationTests {
         let window = UIWindow()
         window.rootViewController = viewController
         window.isHidden = false
+        // A window without a scene may defer installing its root view; attach it explicitly so `view.window` is set now.
+        window.addSubview(viewController.view)
         return (viewController, window)
+    }
+
+    /// `track` hops to the main queue whenever a view controller is set, so the adapter call can land after `track` returns.
+    @MainActor
+    private func waitForTrackDelivery(to mock: MockSprigAdapter, timeout: TimeInterval = 2) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while mock.trackCalls.isEmpty && mock.trackAndPresentCalls.isEmpty && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
     }
 
     // MARK: - Initialization Tests
@@ -201,33 +212,37 @@ struct SprigIntegrationTests {
 
     @Test("Given presentable viewController set, when track is called, then calls trackAndPresent")
     @MainActor
-    func testTrackWithViewController() {
+    func testTrackWithViewController() async throws {
         let (integration, mock) = createIntegration()
-        let (viewController, _window) = makePresentableViewController()
+        let (viewController, window) = makePresentableViewController()
+        try #require(viewController.view.window === window)
         integration.setViewController(viewController)
         let event = createTrackEvent(name: "Survey Trigger", properties: ["context": "checkout"])
 
         integration.track(payload: event)
+        await waitForTrackDelivery(to: mock)
 
         #expect(mock.trackAndPresentCalls.count == 1)
         #expect(mock.trackAndPresentCalls.first?.eventName == "Survey Trigger")
         #expect(mock.trackAndPresentCalls.first?.viewController === viewController)
         #expect(mock.trackCalls.isEmpty)
-        _ = _window
+        withExtendedLifetime(window) { /* Keep the window alive until the assertions have run. */ }
     }
 
     @Test("Given viewController not in a window, when track is called, then falls back to plain track")
     @MainActor
-    func testTrackFallsBackWhenViewControllerNotPresentable() {
+    func testTrackFallsBackWhenViewControllerNotPresentable() async {
         let (integration, mock) = createIntegration()
         let viewController = UIViewController()
         integration.setViewController(viewController)
         let event = createTrackEvent(name: "Button Clicked")
 
         integration.track(payload: event)
+        await waitForTrackDelivery(to: mock)
 
         #expect(mock.trackCalls.count == 1)
         #expect(mock.trackAndPresentCalls.isEmpty)
+        withExtendedLifetime(viewController) { /* Keep the view controller set until the assertions have run. */ }
     }
 
     @Test("Given viewController explicitly cleared with nil, when track is called, then falls back to plain track")

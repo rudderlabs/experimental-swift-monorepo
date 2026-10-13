@@ -21,11 +21,10 @@ class SourceConfigProviderTests {
         self.mockStorage = MockStorage()
         self.analytics = MockProvider.createMockAnalytics(storage: mockStorage)
         self.sourceConfigProvider = SourceConfigProvider(analytics: analytics, backoffPolicy: ExponentialBackoffPolicy(minDelayInMillis: 0))
-        MockURLProtocol.forwardGetRequestsToHandler = true
     }
     
     deinit {
-        MockURLProtocol.forwardGetRequestsToHandler = false
+        analytics.shutdown()
         let storage = self.mockStorage
         Task.detached {
             await storage.removeAll()
@@ -197,8 +196,8 @@ class SourceConfigProviderTests {
         MockProvider.setupMockURLSession()
         HttpNetwork.session = prepareMockUrlSessionWithEventualSuccess(failureCount: 1)
         
-        var receivedConfig: SourceConfig?
-        var configUpdateCount = 0
+        // Updates are published on the provider's download task, not on the test's thread.
+        let receivedConfigs = Synchronized(wrappedValue: [SourceConfig]())
         var cancellables = Set<AnyCancellable>()
         let expectedConfig = MockProvider.sourceConfiguration
         
@@ -209,17 +208,18 @@ class SourceConfigProviderTests {
         
         analytics.sourceConfigState.publisher
             .sink { config in
-                receivedConfig = config
-                configUpdateCount += 1
+                receivedConfigs.modify { $0.append(config) }
             }
             .store(in: &cancellables)
         
         sourceConfigProvider.refreshConfigAndNotifyObservers()
         
-        await mockStorage.waitForKeyValue(key: Constants.storageKeys.sourceConfig, expectedValue: expectedConfig?.jsonString)
+        // The provider stores the downloaded config before notifying observers, so wait for the notification itself.
+        await waitUntil(timeout: 10) { receivedConfigs.wrappedValue.count >= 2 }
         
-        #expect(receivedConfig?.source.sourceId == expectedConfig?.source.sourceId)
-        #expect(configUpdateCount == 2) // Initial state + successful update
+        let configs = receivedConfigs.wrappedValue
+        #expect(configs.last?.source.sourceId == expectedConfig?.source.sourceId)
+        #expect(configs.count == 2) // Initial state + successful update
     }
     
     @Test("given storage has a valid cached source config, when fetchCachedConfig and refreshConfig are called, then both complete successfully")
@@ -324,7 +324,7 @@ extension SourceConfigProviderTests {
     private func prepareMockUrlSessionWithEventualSuccess(failureCount: Int) -> URLSession {
         var attemptCount = 0
         
-        MockURLProtocol.requestHandler = { [self] _ in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { [self] _ in
             attemptCount += 1
             if attemptCount <= failureCount {
                 // Return 500 error for first few attempts
@@ -338,6 +338,8 @@ extension SourceConfigProviderTests {
                 return (200, data, _defaultHeaders)
             }
         }
+        
+        MockURLProtocol.forwardGetRequestsToHandler = true
         
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]

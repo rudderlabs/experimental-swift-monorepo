@@ -26,6 +26,8 @@ class AnalyticsTests {
         let config = MockProvider.createMockConfiguration(storage: mockStorage)
         config.trackApplicationLifecycleEvents = false
         config.sessionConfiguration.automaticSessionTracking = false
+        // The default flush policies are shared instances whose timers would keep flushing this instance after the test.
+        config.flushPolicies = []
         
         // Create analytics instance
         analytics = Analytics(configuration: config)
@@ -36,12 +38,17 @@ class AnalyticsTests {
         analytics.add(plugin: mockPlugin)
     }
     
+    deinit {
+        // Analytics is only released by shutdown; stop it so it cannot send requests during later tests.
+        analytics.shutdown()
+    }
+    
     // MARK: - Track Event Tests
     @Test("when tracking events with variations, then event is captured correctly", arguments: EventTestCaseParameters.trackEvent)
     func testTrackEventVariants(_ eventName: String, _ properties: Properties?, _ options: RudderOption?) async {
         analytics.track(name: eventName, properties: properties, options: options)
         
-        let trackEvents = await mockPlugin.waitForEvents(TrackEvent.self, timeout: 0.3)
+        let trackEvents = await mockPlugin.waitForEvents(TrackEvent.self)
         #expect(trackEvents.count >= 1)
         
         guard let event = trackEvents.first else {
