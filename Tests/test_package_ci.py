@@ -156,9 +156,9 @@ class CiPlanTests(unittest.TestCase):
                          {"test": ["sprig", "firebase"], "export": ["sprig", "firebase"], "policy": True})
 
     def test_shared_build_inputs_select_every_package(self):
-        for path in ["Package.swift", "Package.resolved", ".swiftlint.yml", "release/packages.json",
-                     "release/allowlist.json", ".github/workflows/ci.yml", "scripts/ci/pick-simulator.sh",
-                     "scripts/package_ci.py", "scripts/project.py", "scripts/common.py"]:
+        for path in ["Package.swift", "Package.resolved", ".swiftlint.yml", "release/allowlist.json",
+                     ".github/workflows/ci.yml", "scripts/ci/pick-simulator.sh", "scripts/package_ci.py",
+                     "scripts/project.py", "scripts/common.py"]:
             plan = self.plan(path, self.sprig)
             self.assertEqual((plan["test"], plan["export"]), (self.every, self.every), path)
         self.assertEqual(self.plan(".swiftlint.yml")["policy"], False)
@@ -203,6 +203,85 @@ class CiPlanTests(unittest.TestCase):
             self.assertEqual(changed(base, root), [self.sprig])
             self.assertEqual(ci_plan(changed(base, root), root, base),
                              {"test": ["sprig"], "export": ["sprig"], "policy": False})
+
+
+
+class InventoryPlanTests(unittest.TestCase):
+    """A release/packages.json change selects only the packages whose entry changed (real git history)."""
+    every = ["firebase", "sdk", "sprig"]  # write_json sorts the allowlist, so plans list keys alphabetically here.
+    inventory = "release/packages.json"
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        shutil.copytree(FIXTURE, self.root, dirs_exist_ok=True, ignore=shutil.ignore_patterns(".build", ".swiftpm"))
+        # A new package is allowlisted (sdk_team approval) before its entry lands, so the base already lists it.
+        allowlist = json.loads((self.root / "release/allowlist.json").read_text())
+        allowlist["repositories"]["kit"] = "kit"
+        write_json(self.root / "release/allowlist.json", allowlist)
+        git(self.root, "init", "--initial-branch=main")
+        self.base = commit(self.root, "test: baseline")
+        git(self.root, "switch", "-c", "feature")
+
+    def change(self, edit=None, text=None, also=()):
+        """Commit an inventory edit (`edit(data)`) or new file text and return the PR plan."""
+        path = self.root / self.inventory
+        if edit:
+            data = json.loads(path.read_text())
+            edit(data)
+            write_json(path, data)
+        if text is not None:
+            path.write_text(text)
+        commit(self.root, "test: inventory change")
+        paths = changed(self.base, self.root)
+        self.assertEqual(paths, sorted([self.inventory, *also]))
+        return ci_plan(paths, self.root, self.base)
+
+    def test_integration_entry_change_selects_only_that_integration(self):
+        plan = self.change(lambda d: d["packages"]["firebase"]["platforms"].remove("macOS 12"))
+        self.assertEqual(plan, {"test": ["firebase"], "export": ["firebase"], "policy": True})
+
+    def test_sdk_entry_change_tests_its_dependents_but_exports_only_the_sdk(self):
+        plan = self.change(lambda d: d["packages"]["sdk"]["platforms"].append("tvOS 15"))
+        self.assertEqual(plan, {"test": self.every, "export": ["sdk"], "policy": True})
+
+    def test_added_entry_selects_the_new_package(self):
+        entry = {"path": "Integrations/Kit", "target": "Kit", "repository": "kit", "policies": {}}
+        plan = self.change(lambda d: d["packages"].update(kit=entry))
+        self.assertEqual(plan, {"test": ["kit"], "export": ["kit"], "policy": True})
+
+    def test_removed_entry_tests_the_remaining_dependents_only(self):
+        # A removed package has no job left; packages that still depend on it would be tested.
+        plan = self.change(lambda d: d["packages"].pop("sprig"))
+        self.assertEqual(plan, {"test": [], "export": [], "policy": True})
+
+    def test_field_outside_packages_selects_every_package(self):
+        plan = self.change(lambda d: d.update(schemaVersion=2))
+        self.assertEqual(plan, {"test": self.every, "export": self.every, "policy": True})
+
+    def test_reformat_or_reorder_selects_no_package_but_policy_still_runs(self):
+        # Policy checks own the file's format, so a reformat-only change still runs them.
+        data = json.loads((self.root / self.inventory).read_text())
+        data["packages"] = dict(reversed(list(data["packages"].items())))
+        plan = self.change(text=json.dumps(data, indent=4))
+        self.assertEqual(plan, {"test": [], "export": [], "policy": True})
+
+    def test_file_missing_at_base_selects_every_package(self):
+        git(self.root, "switch", "main")
+        git(self.root, "rm", "-q", "--cached", self.inventory)
+        git(self.root, "commit", "-q", "-m", "test: no inventory")
+        self.base = git(self.root, "rev-parse", "HEAD")
+        git(self.root, "switch", "-C", "feature")
+        plan = self.change(lambda d: d["packages"]["firebase"]["platforms"].remove("macOS 12"))
+        self.assertEqual(plan, {"test": self.every, "export": self.every, "policy": True})
+
+    def test_entry_change_with_a_package_change_selects_both(self):
+        path = self.root / CiPlanTests.sprig
+        path.write_text(path.read_text() + "// change\n")
+        plan = self.change(lambda d: d["packages"]["firebase"]["platforms"].remove("macOS 12"),
+                           also=[CiPlanTests.sprig])
+        self.assertEqual(plan, {"test": ["firebase", "sprig"], "export": ["firebase", "sprig"], "policy": True})
 
 
 DEMO = {"name": "SwiftPublicationExperiment", "targets": [
