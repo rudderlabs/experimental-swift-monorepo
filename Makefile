@@ -4,7 +4,7 @@ MODE ?= history
 KIND ?= integration
 BASE ?= origin/main
 
-.PHONY: prepare sync check test affected lint new-integration import-integration
+.PHONY: prepare sync check test test-python affected lint new-integration import-integration
 
 ## Once per clone (safe to re-run): tool checks, git hooks (repo-local), vendor cache.
 prepare:
@@ -27,9 +27,12 @@ check:
 
 ## Python tests, then iOS Simulator tests for every package (CI's `test (<key>)`).
 ## make test PKG=sprig runs only that package's iOS Simulator tests.
-test:
-	$(if $(PKG),,$(PYTHON) -m unittest discover -s Tests -p 'test_*.py')
+test: $(if $(PKG),,test-python)
 	$(PYTHON) scripts/package_ci.py test $(if $(PKG),--package "$(PKG)")
+
+## Python tests only (the scripts' tests; CI's policy job runs them).
+test-python:
+	$(PYTHON) -m unittest discover -s Tests -p 'test_*.py'
 
 ## Packages this branch changes since it left BASE (default origin/main), e.g. ["sprig"].
 affected:

@@ -27,8 +27,10 @@ PICK_SIMULATOR = ROOT / "scripts/ci/pick-simulator.sh"
 # Per-package test scheme, written for each `test (<key>)` run and removed after it (test_scheme).
 SCHEME = "package-ci-{}"
 # PR CI selection (D34). A trailing slash matches a folder. The scripts package_ci.py imports also count as BUILD.
-BUILD = ("Package.swift", "Package.resolved", ".swiftlint.yml", "release/packages.json", "release/allowlist.json",
-         ".github/workflows/ci.yml", "scripts/ci/")
+# release/packages.json is not BUILD: changed_entries() selects the packages whose entry changed.
+INVENTORY = "release/packages.json"
+BUILD = ("Package.swift", "Package.resolved", ".swiftlint.yml", "release/allowlist.json", ".github/workflows/ci.yml",
+         "scripts/ci/")
 EXPORT = ("LICENSE", "release/templates/")
 POLICY = ("scripts/", "release/", "Tests/", ".github/", "Shared/", "Makefile", "Package.swift", "Package.resolved",
           ".release-please-manifest.json", "release-please-config.json")
@@ -71,11 +73,28 @@ def dependents(keys, packages):
         result |= more
 
 
+def changed_entries(root=ROOT, base_ref="HEAD"):
+    """Keys whose release/packages.json entry was added, removed or changed since `base_ref` (parsed JSON, so
+    whitespace and key order do not count); `None` (every package) when a field outside `packages` changed or the
+    file is missing or unreadable at `base_ref`."""
+    try:
+        before = json.loads(git(root, "show", f"{base_ref}:{INVENTORY}"))
+        old = before.pop("packages")
+    except (RuntimeError, ValueError, KeyError, AttributeError):
+        return None
+    after = json.loads(git(root, "show", f"HEAD:{INVENTORY}"))  # committed, like the changed paths
+    new = after.pop("packages")
+    if before != after:
+        return None
+    return {k for k in old.keys() | new.keys() if old.get(k) != new.get(k)}
+
+
 def ci_plan(paths, root=ROOT, base_ref="HEAD"):
     """Packages to test and export and whether the policy job runs; `paths=None` (push to main) checks everything.
 
     Shared build inputs select every package, LICENSE and release templates every export, docs nothing. Other paths
-    select their package (release_plan.affected), and tests also cover the packages that depend on it.
+    select their package (release_plan.affected), and tests also cover the packages that depend on it. A
+    release/packages.json change selects the packages whose entry changed (changed_entries), the same way.
     """
     packages = inventory(root)
     every = list(packages)
@@ -83,10 +102,12 @@ def ci_plan(paths, root=ROOT, base_ref="HEAD"):
         return {"test": every, "export": every, "policy": True}
     policy = any(matches(p, POLICY) or p.rsplit("/", 1)[-1] in POLICY_FILES for p in paths)
     build = imported()
-    if any(matches(p, BUILD) or p in build for p in paths):
+    entries = changed_entries(root, base_ref) if INVENTORY in paths else set()
+    if entries is None or any(matches(p, BUILD) or p in build for p in paths):
         return {"test": every, "export": every, "policy": policy}
-    code = [p for p in paths if not matches(p, EXPORT) and not p.endswith(".md") and not p.startswith("docs/")]
-    direct = affected(code, root, base_ref) if code else []
+    code = [p for p in paths if p != INVENTORY and not matches(p, EXPORT) and not p.endswith(".md")
+            and not p.startswith("docs/")]
+    direct = (affected(code, root, base_ref) if code else []) + [k for k in every if k in entries]
     test = dependents(direct, packages)
     export = every if any(matches(p, EXPORT) for p in paths) else direct
     return {"test": [k for k in every if k in test], "export": [k for k in every if k in export], "policy": policy}

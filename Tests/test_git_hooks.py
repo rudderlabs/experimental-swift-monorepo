@@ -109,6 +109,121 @@ class BranchNameTests(unittest.TestCase):
             self.assertNotIn("Running pre-push checks", result.stdout)
 
 
+def fixture_monorepo(root):
+    """The demo fixture plus the repository tooling, committed on `main` with the hooks on."""
+    shutil.copytree(FIXTURE, root, ignore=shutil.ignore_patterns(".build", ".swiftpm"))
+    for name in ["scripts", "Makefile", ".swiftlint.yml", "LICENSE", ".gitignore"]:
+        if (ROOT / name).is_dir():
+            shutil.copytree(ROOT / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
+        else:
+            shutil.copyfile(ROOT / name, root / name)
+    shutil.copytree(ROOT / ".github", root / ".github")
+    subprocess.run([sys.executable, "scripts/generate_github.py"], cwd=root, check=True, capture_output=True)
+    git(root, "init", "--quiet", "--initial-branch=main")
+    git(root, "add", "-A")
+    git(root, "commit", "--quiet", "--no-verify", "-m", "chore: baseline")
+    git(root, "config", "--local", "core.hooksPath", "scripts/git-hooks")
+
+
+class PrePushTestPlanTests(unittest.TestCase):
+    """The pre-push test step runs only what CI's plan selects; a stub `make` records the calls."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "mono"
+        fixture_monorepo(self.root)
+        git(self.root, "update-ref", "refs/remotes/origin/main", "HEAD")
+        git(self.root, "checkout", "--quiet", "-b", "fix/x")
+        bin_dir = Path(self.temp.name) / "bin"
+        bin_dir.mkdir()
+        self.log = Path(self.temp.name) / "make.log"
+        (bin_dir / "make").write_text(f'#!/bin/bash\nshift 3\necho "$*" >> "{self.log}"\n')  # drop -s -C <root>
+        (bin_dir / "make").chmod(0o755)
+        self.env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}", "PRE_PUSH_FORCE_TESTS": "1"}
+
+    def change(self, path):
+        file = self.root / path
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text((file.read_text() if file.exists() else "") + "\n// change\n")
+        git(self.root, "add", "--", path)
+        git(self.root, "commit", "--quiet", "--no-verify", "-m", "fix: change")
+
+    def push(self, branch="fix/x", env=None):
+        line = f"refs/heads/{branch} {'1' * 40} refs/heads/{branch} {'0' * 40}\n"
+        result = hook("pre-push", "origin", "https://example.invalid/repo.git", stdin=line,
+                      env={**self.env, **(env or {})}, cwd=self.root)
+        calls = self.log.read_text().splitlines() if self.log.exists() else []
+        return result, calls
+
+    def test_package_change_tests_only_that_package(self):
+        self.change("Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift")
+        result, calls = self.push()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, ["test PKG=sprig"])
+        self.assertIn("testing: sprig", result.stdout)
+
+    def test_sdk_change_also_tests_its_dependents(self):
+        self.change("Packages/DemoSDK/Sources/DemoSDK/Added.swift")
+        result, calls = self.push()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("test PKG=sdk", calls)
+        self.assertIn("test PKG=sprig", calls)
+        self.assertNotIn("test-python", calls)
+
+    def test_docs_change_runs_no_tests(self):
+        self.change("Integrations/Sprig/README.md")
+        result, calls = self.push()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, [])
+        self.assertIn("no tests needed", result.stdout)
+
+    def test_tooling_change_runs_the_python_tests(self):
+        self.change("scripts/scaffold.py")
+        result, calls = self.push()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls[0], "test-python")
+        self.assertIn("Python tests", result.stdout)
+
+    def test_failing_tests_block_the_push(self):
+        self.change("Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift")
+        (self.root.parent / "bin/make").write_text("#!/bin/bash\nexit 2\n")
+        result, _ = self.push()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Tests failed (make test PKG=sprig)", result.stdout)
+
+    def test_without_a_terminal_tests_are_skipped(self):
+        self.change("Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift")
+        result, calls = self.push(env={"PRE_PUSH_FORCE_TESTS": ""})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, [])
+        self.assertIn("Skipping tests", result.stdout)
+
+    def test_invalid_branch_name_is_still_rejected(self):
+        self.change("Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift")
+        result, calls = self.push("my-branch")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Invalid branch name", result.stdout)
+        self.assertEqual(calls, [])
+
+    def test_missing_origin_main_runs_everything(self):
+        git(self.root, "update-ref", "-d", "refs/remotes/origin/main")
+        result, calls = self.push()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, ["test"])
+        self.assertIn("origin/main not found locally", result.stdout)
+
+    def test_branch_behind_main_warns_without_blocking(self):
+        git(self.root, "checkout", "--quiet", "main")
+        self.change("Integrations/Sprig/README.md")
+        git(self.root, "update-ref", "refs/remotes/origin/main", "HEAD")
+        git(self.root, "checkout", "--quiet", "fix/x")
+        result, calls = self.push()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("behind origin/main", result.stdout)
+        self.assertEqual(calls, [])
+
+
 class PreCommitTests(unittest.TestCase):
     """A fixture monorepo with the hooks on: markers follow Package.swift into the same commit."""
 
@@ -116,19 +231,7 @@ class PreCommitTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "mono"
-        shutil.copytree(FIXTURE, self.root, ignore=shutil.ignore_patterns(".build", ".swiftpm"))
-        for name in ["scripts", "Makefile", ".swiftlint.yml", "LICENSE", ".gitignore"]:
-            if (ROOT / name).is_dir():
-                shutil.copytree(ROOT / name, self.root / name, ignore=shutil.ignore_patterns("__pycache__"))
-            else:
-                shutil.copyfile(ROOT / name, self.root / name)
-        shutil.copytree(ROOT / ".github", self.root / ".github")
-        subprocess.run([sys.executable, "scripts/generate_github.py"], cwd=self.root, check=True,
-                       capture_output=True)
-        git(self.root, "init", "--quiet", "--initial-branch=main")
-        git(self.root, "add", "-A")
-        git(self.root, "commit", "--quiet", "--no-verify", "-m", "chore: baseline")
-        git(self.root, "config", "--local", "core.hooksPath", "scripts/git-hooks")
+        fixture_monorepo(self.root)
 
     def commit(self, message, *paths):
         git(self.root, "add", "--", *paths)

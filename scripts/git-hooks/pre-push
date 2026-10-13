@@ -2,9 +2,16 @@
 
 # ──────────────────────────────────────────────────────────────
 # pre-push hook (ported from rudder-sdk-swift)
-# Validates branch name, then runs `make test` (the Python tests and
-# the iOS Simulator package tests, the same as CI) before allowing a
-# push to the remote.
+# Validates branch name, then tests only what the push affects, using
+# the same plan as PR CI (`scripts/package_ci.py ci-plan --base
+# origin/main`): `make test PKG=<key>` for each affected package and
+# `make test-python` when scripts, release data or other policy paths
+# change. Docs-only pushes run no tests. Without a local origin/main
+# it runs the full `make test`. The hook never fetches: run
+# `git fetch origin` to refresh origin/main.
+#
+# PRE_PUSH_FORCE_TESTS=1 runs the test step without a terminal (used
+# by Tests/test_git_hooks.py only).
 #
 # NOTE: The test step is skipped when running from a GUI git client
 # (e.g. SourceTree) due to a macOS Gatekeeper restriction that blocks
@@ -62,6 +69,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
 
     echo "[SUCCESS] Branch name validation passed: '$branch'"
+    pushes_branch=1
 done
 
 # ── 2. Tests (Terminal only) ─────────────────────────────────
@@ -70,7 +78,7 @@ done
 # GUI git clients (SourceTree, Fork, etc.) are non-interactive, and
 # macOS Gatekeeper blocks Swift Package Manager in that context.
 # CI (GitHub Actions) enforces these checks.
-if [ ! -t 1 ]; then
+if [ ! -t 1 ] && [ "$PRE_PUSH_FORCE_TESTS" != "1" ]; then
     echo "[INFO] Non-interactive context detected (GUI git client)."
     echo "       Skipping tests — CI will enforce them."
     echo ""
@@ -78,14 +86,65 @@ if [ ! -t 1 ]; then
     exit 0
 fi
 
-echo ""
-echo "[INFO] Running tests (make test)..."
-if ! make -s -C "$(git rev-parse --show-toplevel)" test; then
+# Tags and branch deletes change no code: nothing to test.
+if [ -z "$pushes_branch" ]; then
     echo ""
-    echo "[ERROR] Tests failed. Please fix failing tests before pushing."
+    echo "All pre-push checks passed. Ready to push."
+    exit 0
+fi
+
+ROOT=$(git rev-parse --show-toplevel)
+BASE=origin/main
+
+run() {
+    echo ""
+    echo "[INFO] Running: make $*"
+    if ! make -s -C "$ROOT" "$@"; then
+        echo ""
+        echo "[ERROR] Tests failed (make $*). Please fix failing tests before pushing."
+        exit 1
+    fi
+}
+
+# Without origin/main we cannot tell what changed, so test everything
+# (the old behavior) rather than let an untested push through.
+if ! git rev-parse --verify --quiet "$BASE^{commit}" > /dev/null; then
+    echo ""
+    echo "[WARNING] $BASE not found locally (run 'git fetch origin'); running all tests."
+    run test
+    echo "[SUCCESS] All tests passed."
+    echo ""
+    echo "All pre-push checks passed. Ready to push."
+    exit 0
+fi
+
+# A branch that does not contain origin/main may carry commits main
+# already has (they would be tested and pushed again). Warn only.
+if ! git merge-base --is-ancestor "$BASE" HEAD; then
+    echo ""
+    echo "[WARNING] This branch is behind $BASE. Consider rebasing: git fetch origin && git rebase $BASE"
+fi
+
+# The plan covers the checked-out branch (HEAD) since it left origin/main,
+# committed changes only: {"test": [keys], "export": [...], "policy": bool}.
+if ! PLAN=$(cd "$ROOT" && python3 scripts/package_ci.py ci-plan --base "$BASE"); then
+    echo "[ERROR] Could not compute the test plan (scripts/package_ci.py ci-plan)."
     exit 1
 fi
-echo "[SUCCESS] All tests passed."
+read -r POLICY PACKAGES <<< "$(python3 -c 'import json, sys; p = json.load(sys.stdin); print(int(p["policy"]), *p["test"])' <<< "$PLAN")"
+
+echo ""
+if [ "$POLICY" != "1" ] && [ -z "$PACKAGES" ]; then
+    echo "[INFO] No package or tooling changes since $BASE: no tests needed."
+else
+    [ -n "$PACKAGES" ] && echo "[INFO] Packages changed since $BASE (with their dependents) → testing: ${PACKAGES// /, }"
+    [ "$POLICY" = "1" ] && echo "[INFO] Scripts, release data or other tooling changed → running the Python tests"
+    [ "$POLICY" = "1" ] && run test-python
+    for key in $PACKAGES; do
+        run test PKG="$key"
+    done
+    echo "[SUCCESS] All affected tests passed."
+fi
 
 echo ""
 echo "All pre-push checks passed. Ready to push."
