@@ -140,7 +140,7 @@ jobs:
           import json, os
           from pathlib import Path
           result = json.loads((Path(os.environ['RUNNER_TEMP']) / 'publication-result.json').read_text())
-          if result['status'] not in ('published', 'awaiting_review', 'awaiting_dependency', 'awaiting_takeover'):
+          if result['status'] not in ('published', 'awaiting_review', 'awaiting_dependency', 'awaiting_takeover', 'abandoned'):
               raise SystemExit('Publication is incomplete')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               for key in ('status', 'package', 'version', 'tag', 'sourceCommit', 'publicationCommit', 'pullRequest'):

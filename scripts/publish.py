@@ -12,7 +12,7 @@ from common import (ROOT, OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commi
                     inventory, load, mirrors, run, swift_options, text, url, write_json)
 from project import export
 import release_notes
-from reviewed_publication import MODES, WORKFLOWS, find_pr, layout, reviewed_commit, takeover_check, verify_merged
+from reviewed_publication import MODES, Abandoned, WORKFLOWS, find_pr, layout, reviewed_commit, takeover_check, verify_merged
 
 DESTINATIONS = {"iOS": "iOS", "macOS": "macOS", "macCatalyst": "macOS,variant=Mac Catalyst",
                 "tvOS": "tvOS", "watchOS": "watchOS", "visionOS": "visionOS"}
@@ -33,11 +33,23 @@ def publication_lock(mirror_root, name):
         yield
 
 
-def verify_tree(repo):
+def verify_tree(repo, export_hashes=None):
+    """The tree's provenance. Drift is accepted only when `export_hashes()` (the new export's fileHashes) already
+    holds every differing file as is: an outside edit that was synced back (scripts/sync_back.py)."""
     provenance = load(repo / ".publication.json")
-    if provenance["fileHashes"] != file_hashes(repo):
+    published, current = provenance["fileHashes"], file_hashes(repo)
+    drift = {p for p in published.keys() | current.keys() if published.get(p) != current.get(p)}
+    if drift and not (export_hashes and synced(drift, current, export_hashes)):
         raise ValueError("Publication repository contains manual drift")
     return provenance
+
+
+def synced(drift, current, export_hashes):
+    try:
+        expected = export_hashes()
+    except (ValueError, RuntimeError):
+        return False  # Without an export nothing proves the edit came back; the drift error stands.
+    return all(current.get(p) == expected.get(p) for p in drift)
 
 
 def tag_exists(repo, version):
@@ -176,7 +188,8 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
             git(repo, "checkout", "-B", RELEASE_BRANCH, publication_ref)
             state = layout(repo)
             if state == "generated":
-                verify_tree(repo)
+                # A separate export: `stage` must stay empty for prepare().
+                verify_tree(repo, lambda: export(key, version, temp / "synced-check", root)["fileHashes"])
         if mirror_root is None:
             if not has_branch:
                 raise ValueError("Reviewed publication requires a seeded main branch")
@@ -203,7 +216,10 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
             if minimum and not run(["git", "ls-remote", url("sdk"), f"refs/tags/{minimum}"]):
                 return waiting("awaiting_dependency", key, version, source, dependency="sdk", minimum=minimum)
             kind = "bootstrap" if state == "readme-only" else "normal"
-            sha, pr = reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, kind, package)
+            try:
+                sha, pr = reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, kind, package)
+            except Abandoned:
+                return waiting("abandoned", key, version, source)
             if sha is None:
                 return waiting("awaiting_review", key, version, source, pullRequest=pr["html_url"],
                                pullRequestNumber=pr["number"], branch=pr["head"]["ref"], mode=kind)

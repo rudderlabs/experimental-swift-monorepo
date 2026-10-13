@@ -17,7 +17,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from common import commit, file_hashes, git, run, write_json
 from publish import verify_tree
-from reviewed_publication import BOT, reviewed_commit
+from reviewed_publication import ABANDON, BOT, Abandoned, abandon, abandon_state, reviewed_commit
 
 BOT_ID_EMAIL = '12345678+rudderstack-github-actions[bot]@users.noreply.github.com'  # the id is a test value
 
@@ -41,7 +41,7 @@ class ReviewedPublicationTests(unittest.TestCase):
         self.expected = {'package': 'sprig', 'version': '0.1.1', 'sourceCommit': 'a' * 40,
                          'fileHashes': file_hashes(self.stage)}
         write_json(self.stage / '.publication.json', self.expected)
-        self.pr = None
+        self.pr = self.revert = self.later = None
         # A rejected main push proves that PR preparation never uses that route.
         hook = self.remote / 'hooks/pre-receive'
         hook.write_text('#!/bin/sh\nwhile read old new ref; do\n'
@@ -57,15 +57,21 @@ class ReviewedPublicationTests(unittest.TestCase):
 
     def create(self, args, **kwargs):
         self.assertEqual(args[:3], ['gh', 'pr', 'create'])
-        self.pr = {'number': 1, 'html_url': 'https://example.invalid/pr/1', 'state': 'open', 'merged': False,
-                   'merge_commit_sha': None, 'user': {'login': BOT},
-                   'base': {'ref': 'main', 'repo': {'full_name': 'rudderlabs/experimental-integration-swift-sprig'}},
-                   'head': {'ref': 'publication/sprig/0.1.1', 'sha': git(self.repo, 'rev-parse', 'HEAD'),
-                            'repo': {'full_name': 'rudderlabs/experimental-integration-swift-sprig'}}}
-        return self.pr['html_url']
+        head = args[args.index('--head') + 1]
+        pr = {'number': 1, 'html_url': 'https://example.invalid/pr/1', 'state': 'open', 'merged': False,
+              'merge_commit_sha': None, 'user': {'login': BOT}, 'labels': [],
+              'base': {'ref': 'main', 'repo': {'full_name': 'rudderlabs/experimental-integration-swift-sprig'}},
+              'head': {'ref': head, 'sha': git(self.repo, 'rev-parse', 'HEAD'),
+                       'repo': {'full_name': 'rudderlabs/experimental-integration-swift-sprig'}}}
+        setattr(self, {'abandon/sprig/0.1.1': 'revert', 'publication/sprig/0.1.2': 'later'}.get(head, 'pr'), pr)
+        return pr['html_url']
+
+    def find(self, key, version, mode='normal'):
+        # The GitHub PR lookup, by branch: publication 0.1.1, its abandon revert PR, and a later 0.1.2.
+        return self.revert if mode == ABANDON else self.pr if version == '0.1.1' else self.later
 
     def prepare(self):
-        with patch('reviewed_publication.find_pr', side_effect=lambda *a: self.pr), \
+        with patch('reviewed_publication.find_pr', side_effect=self.find), \
              patch('reviewed_publication.run', side_effect=self.create):
             return reviewed_commit('sprig', '0.1.1', 'a' * 40, self.repo, self.stage, lambda full: self.expected,
                                    verify_tree)
@@ -132,7 +138,7 @@ class ReviewedPublicationTests(unittest.TestCase):
         merged = self.merge()
         def export_changed(full):
             raise AssertionError('A newer exporter would differ; a merged version is never re-exported')
-        with patch('reviewed_publication.find_pr', side_effect=lambda *a: self.pr):
+        with patch('reviewed_publication.find_pr', side_effect=self.find):
             self.assertEqual(reviewed_commit('sprig', '0.1.1', 'a' * 40, self.repo, self.stage, export_changed,
                                              verify_tree)[0], merged)
             # The stored record still binds the merge to its release identity and to its own file hashes.
@@ -154,9 +160,98 @@ class ReviewedPublicationTests(unittest.TestCase):
 
     def test_closed_unmerged_pr_stops(self):
         self.prepare()
-        self.pr.update(state='closed')
-        with self.assertRaisesRegex(ValueError, 'closed without merging'):
+        self.pr.update(state='closed', labels=[{'name': 'wontfix'}])
+        with self.assertRaisesRegex(ValueError, 'closed without merging') as caught:
             self.prepare()
+        self.assertNotIsInstance(caught.exception, Abandoned)
+        self.assertIsNone(self.state())
+
+    def state(self):
+        with patch('reviewed_publication.find_pr', side_effect=self.find):
+            return abandon_state('sprig', '0.1.1', self.pr)
+
+    def abandon(self):
+        with patch('reviewed_publication.find_pr', side_effect=self.find), \
+             patch('reviewed_publication.run', side_effect=self.create):
+            return abandon('sprig', '0.1.1', self.repo, verify_tree)
+
+    def test_closed_pr_with_abandon_label_is_abandoned(self):
+        self.prepare()
+        self.pr.update(state='closed', labels=[{'name': ABANDON}])
+        self.assertEqual(self.state(), 'abandoned')
+        with self.assertRaisesRegex(Abandoned, 'abandoned; it is never tagged'):
+            self.prepare()
+        self.assertEqual(self.abandon(), ('abandoned', self.pr))
+        self.assertEqual(git(self.remote, 'tag', '--list'), '')
+
+    def test_merged_untagged_version_is_reverted_by_a_reviewed_pr_then_never_tagged(self):
+        self.prepare()
+        merged = self.merge()
+        status, revert = self.abandon()
+        self.assertEqual((status, revert), ('awaiting_review', self.revert))
+        self.assertEqual(revert['head']['ref'], 'abandon/sprig/0.1.1')
+        self.assertEqual(git(self.remote, 'rev-parse', 'main'), merged)  # main changes only by review
+        # A retry while the revert PR is open opens nothing new and still never tags.
+        self.assertEqual(self.abandon()[0], 'abandoning')
+        with self.assertRaisesRegex(Abandoned, 'abandoning'):
+            self.prepare()
+        # Model the reviewed merge of the revert PR: public main is the last published tree again.
+        git(self.remote, 'update-ref', 'refs/heads/main', revert['head']['sha'])
+        revert.update(state='closed', merged=True, merge_commit_sha=revert['head']['sha'])
+        self.assertEqual(git(self.remote, 'diff', '--name-only', self.original_main, 'main'), '')
+        self.assertEqual(self.state(), 'abandoned')
+        self.assertEqual(self.abandon()[0], 'abandoned')
+        # The reverted merge is still an ancestor of main; it is never returned for tagging.
+        with self.assertRaises(Abandoned):
+            self.prepare()
+        self.assertEqual(git(self.remote, 'tag', '--list'), '')
+        # The next version branches from the restored main: its drift check and version order pass.
+        git(self.repo, 'fetch', 'origin')
+        git(self.repo, 'checkout', '--detach', 'origin/main')
+        self.assertEqual(verify_tree(self.repo)['version'], '0.1.0')
+        (self.stage / 'VERSION').write_text('0.1.2\n')
+        later = {**self.expected, 'version': '0.1.2', 'fileHashes': file_hashes(self.stage)}
+        write_json(self.stage / '.publication.json', later)
+        with patch('reviewed_publication.find_pr', side_effect=self.find), \
+             patch('reviewed_publication.run', side_effect=self.create):
+            self.assertIsNone(reviewed_commit('sprig', '0.1.2', 'a' * 40, self.repo, self.stage,
+                                              lambda full: later, verify_tree)[0])
+        self.assertEqual(self.later['head']['ref'], 'publication/sprig/0.1.2')
+        self.assertEqual(git(self.repo, 'merge-base', 'HEAD', 'origin/main'), revert['head']['sha'])
+
+    def test_closed_revert_pr_cancels_the_abandon_request(self):
+        self.prepare()
+        merged = self.merge()
+        self.abandon()
+        self.revert.update(state='closed')
+        self.assertIsNone(self.state())
+        self.assertEqual(self.prepare()[0], merged)
+        with self.assertRaisesRegex(ValueError, 'delete branch abandon/sprig/0.1.1'):
+            self.abandon()
+
+    def test_tagged_version_is_never_abandoned(self):
+        self.prepare()
+        merged = self.merge()
+        git(self.repo, 'tag', '0.1.1', merged)
+        with self.assertRaisesRegex(ValueError, 'already public .* roll forward'):
+            self.abandon()
+        self.assertIsNone(self.revert)
+        self.assertEqual(git(self.remote, 'for-each-ref', 'refs/heads/abandon'), '')
+
+    def test_open_pr_is_closed_with_the_label_not_reverted(self):
+        self.prepare()
+        with self.assertRaisesRegex(ValueError, f'close it with label {ABANDON}'):
+            self.abandon()
+        self.assertIsNone(self.revert)
+
+    def test_abandon_workflow_is_manual_and_refuses_unsafe_inputs(self):
+        workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/abandon-publication.yml').read_text()
+        self.assertIn('on:\n  workflow_dispatch:\n    inputs:\n', workflow)
+        self.assertIn('      group: experimental-publication-${{ inputs.package }}\n', workflow)
+        self.assertIn('python3 scripts/reviewed_publication.py "$PACKAGE" "$VERSION"', workflow)
+        self.assertEqual([l for l in workflow.splitlines() if l.strip().startswith('run:') and '${{' in l], [])
+        for forbidden in ('permission-workflows', 'git push', 'gh pr merge', 'release create'):
+            self.assertNotIn(forbidden, workflow)
 
     def test_wrong_bot_or_destination_stops(self):
         self.prepare()
@@ -206,7 +301,7 @@ class ReviewedPublicationTests(unittest.TestCase):
              patch('publish.source_commit', return_value='a' * 40), \
              patch.dict(os.environ, GIT_CONFIG_GLOBAL=str(self.identity())), \
              patch('publish.ensure_release', return_value='https://example.invalid/release') as release, \
-             patch('reviewed_publication.find_pr', side_effect=lambda *a: self.pr), \
+             patch('reviewed_publication.find_pr', side_effect=self.find), \
              patch('reviewed_publication.run', side_effect=create_pr):
             with patch('publish.inventory', return_value={'sprig': {
                     'repository': 'experimental-integration-swift-sprig', 'sdkMinimum': '9.0.0'}}):

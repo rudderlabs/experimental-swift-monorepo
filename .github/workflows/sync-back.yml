@@ -1,0 +1,58 @@
+name: Sync Back Public Changes
+# An outside PR merged on a publication repository comes back to the monorepo as a bot PR (scripts/sync_back.py).
+# The App token, not GITHUB_TOKEN, opens it: a GITHUB_TOKEN PR starts CI in an approval-required state.
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package key from release/allowlist.json
+        type: choice
+        required: true
+        options:
+          - sdk
+          - sprig
+          - firebase
+permissions:
+  contents: read
+jobs:
+  sync-back:
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: experimental-spm-release
+    concurrency:
+      group: experimental-sync-back-${{ inputs.package }}
+      cancel-in-progress: false
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: experimental-swift-monorepo
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Configure bot identity
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          id="$(gh api '/users/rudderstack-github-actions%5Bbot%5D' --jq .id)"
+          [[ "$id" =~ ^[1-9][0-9]*$ ]] || { echo "Bot user id lookup failed"; exit 1; }
+          git config --global user.name "rudderstack-github-actions[bot]"
+          git config --global user.email "${id}+rudderstack-github-actions[bot]@users.noreply.github.com"
+      - name: Open the sync-back PR
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          gh auth setup-git
+          python3 scripts/sync_back.py "$PACKAGE" | tee -a "$GITHUB_STEP_SUMMARY"

@@ -15,6 +15,7 @@ from unittest.mock import call, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from common import ROOT
 from publication_queue import queue
+from reviewed_publication import BOT
 import json
 
 FIXTURE = Path(__file__).resolve().parent / 'Fixtures' / 'demo'  # inventory and allowlist only; Git is modeled
@@ -22,11 +23,13 @@ FIXTURE = Path(__file__).resolve().parent / 'Fixtures' / 'demo'  # inventory and
 
 class PublicationQueueTests(unittest.TestCase):
     def run_queue(self, published=False, wrong_source=False, release_missing=False, open_pr=False,
-                  firebase=False, body=None, draft=False):
+                  firebase=False, body=None, draft=False, prs=None, later=False):
         sha, pub = 'a' * 40, 'b' * 40
         intents = [{'tag_name': 'integration-sprig-0.1.1', 'draft': False, 'prerelease': False},
                    {'tag_name': 'unrelated-1.0.0', 'draft': False, 'prerelease': False},
                    {'tag_name': 'sdk-0.2.0', 'draft': True, 'prerelease': False}]
+        if later:
+            intents.append({'tag_name': 'integration-sprig-0.1.2', 'draft': False, 'prerelease': False})
         if firebase:
             intents.append({'tag_name': 'integration-firebase-0.1.1', 'draft': False, 'prerelease': False})
         # Releases 1.4.1, 1.0.1 and 1.1.3 were created with these earlier texts.
@@ -47,11 +50,14 @@ class PublicationQueueTests(unittest.TestCase):
                 # Only Sprig has a public tag; Firebase is a fresh pending release.
                 return 'refs/tags/0.1.1' if published and 'sprig' in str(self.clones[-1]) else ''
             return ''
-        def pr(key, version):
+        def pr(key, version, mode='normal'):
+            if prs is not None:
+                return prs.get((key, version, mode))
             return {'state': 'open'} if open_pr and key == 'sprig' else None
         with patch('publication_queue.run', side_effect=command), \
              patch('publication_queue.git', side_effect=git_command), \
              patch('publication_queue.find_pr', side_effect=pr) as find_pr, \
+             patch('reviewed_publication.find_pr', side_effect=pr), \
              patch('publication_queue.verify_tree', return_value={
                  'sourceCommit': 'c' * 40 if wrong_source else sha, 'package': 'sprig', 'version': '0.1.1'}):
             pending, self.skipped = queue(FIXTURE)
@@ -86,6 +92,33 @@ class PublicationQueueTests(unittest.TestCase):
         self.assertEqual(self.skipped, [{'package': 'sprig', 'version': '0.1.1', 'source_sha': 'a' * 40,
                                          'status': 'awaiting_review'}])
         self.assertIn(call('sprig', '0.1.1'), self.find_pr)
+
+    def bot_pr(self, version, state='closed', merged=False, labels=(), prefix='publication'):
+        repository = {'full_name': 'rudderlabs/experimental-integration-swift-sprig'}
+        return {'state': state, 'merged': merged, 'labels': [{'name': n} for n in labels],
+                'user': {'login': BOT}, 'base': {'ref': 'main', 'repo': repository},
+                'head': {'ref': f'{prefix}/sprig/{version}', 'repo': repository}}
+
+    def test_abandoned_version_is_reported_and_a_later_version_proceeds(self):
+        later = {'package': 'sprig', 'version': '0.1.2', 'source_sha': 'a' * 40}
+        merged = self.bot_pr('0.1.1', merged=True)
+        for name, prs in (('closed with label', {('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1', labels=['abandon'])}),
+                          ('merged then reverted', {('sprig', '0.1.1', 'normal'): merged,
+                                                    ('sprig', '0.1.1', 'abandon'): self.bot_pr(
+                                                        '0.1.1', merged=True, prefix='abandon')})):
+            with self.subTest(name):
+                self.assertEqual(self.run_queue(prs=prs, later=True), [later])
+                self.assertEqual(self.skipped, [{'package': 'sprig', 'version': '0.1.1', 'source_sha': 'a' * 40,
+                                                 'status': 'abandoned'}])
+
+    def test_unlabeled_close_or_pending_revert_is_never_abandoned(self):
+        closed = {('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1', labels=['wontfix'])}
+        # Still pending: Tag & Release Packages stops on it with the review-required error.
+        self.assertEqual(len(self.run_queue(prs=closed)), 1)
+        reverting = {('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1', merged=True),
+                     ('sprig', '0.1.1', 'abandon'): self.bot_pr('0.1.1', state='open', prefix='abandon')}
+        self.assertEqual(self.run_queue(prs=reverting), [])
+        self.assertEqual([s['status'] for s in self.skipped], ['abandoning'])
 
     def test_modeled_release_is_written_once_and_kept(self):
         from common import text

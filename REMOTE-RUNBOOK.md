@@ -69,7 +69,7 @@ Review this baseline setup before enabling normal Release Please changes.
 | Coordinated API change and raised `sdkMinimum` | SDK first, then integrations | Select compatible versions of all three packages |
 | Reinstall baseline | No new publication | Fresh consumer still resolves every `0.1.0` tag |
 
-Use actual `fix:`/`feat:` commits, review the Release Please PR, and merge only the intended package version changes.
+Use actual `fix:`/`feat:` commits, review each package's Release Please PR (one per package), and merge only the PRs of the intended packages.
 Confirm Swift version constants, `version.txt`, and manifest versions agree before publication.
 The configured `extra-files` paths are relative to each package path.
 CI checks shared fingerprints before merge. A shared-source fix must include both marker files in the same reviewed fix commit.

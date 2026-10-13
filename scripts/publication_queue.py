@@ -7,7 +7,7 @@ import tempfile
 from common import ROOT, OWNER, SOURCE_NAME, git, inventory, run, url
 from project import SEMVER
 from publish import verify_tree
-from reviewed_publication import find_pr
+from reviewed_publication import abandon_state, find_pr
 
 FAILURES = (ValueError, RuntimeError, OSError, KeyError)
 
@@ -30,7 +30,10 @@ def state(repo, key, version, sha, public_releases):
         return 'pending'
     # An open bot PR waits for review; Tag & Release Packages never rebuilds it.
     pr = find_pr(key, version)
-    return 'awaiting_review' if pr and pr['state'] == 'open' else 'pending'
+    if pr and pr['state'] == 'open':
+        return 'awaiting_review'
+    # A discarded version is reported and never tagged; later versions still publish.
+    return abandon_state(key, version, pr) or 'pending'
 
 
 def queue(root=ROOT):

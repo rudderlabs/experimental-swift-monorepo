@@ -1,5 +1,6 @@
 name: "Tag & Release Packages"
 # Completes reviewed publications (D20): manual, no inputs, every run scans all packages.
+# Abandoned versions (closed with label `abandon`, or reverted by Abandon Unpublished Version) are reported, never tagged.
 on:
   workflow_dispatch:
 permissions:

@@ -154,6 +154,34 @@ class ReleaseConfigTests(unittest.TestCase):
         self.assertEqual(sections, {**dict.fromkeys(["feat", "fix", "perf", "refactor", "chore"], False),
                                     **dict.fromkeys(["docs", "test", "ci", "style", "build", "revert"], True)})
 
+    def test_each_package_gets_its_own_release_pr(self):
+        # `chore(release): sdk 1.4.2` on `release-please--branches--main--components--sdk`, like rudder-sdk-swift.
+        # Release Please adds the space before `${component}` itself and parses merged titles with the same pattern.
+        config = load(ROOT / "release-please-config.json")
+        self.assertIs(config["separate-pull-requests"], True)
+        self.assertEqual(config["pull-request-title-pattern"], "chore(release):${component} ${version}")
+        self.assertNotIn("group-pull-request-title-pattern", config)
+
+    def test_a_package_released_alone_plans_only_that_package(self):
+        """Action outputs (release-please-action v4 `outputReleases`) after merging one package's release PR."""
+        packages = inventory(ROOT)
+
+        def released(key, version):
+            path, component = packages[key]["path"], packages[key]["component"]
+            return {"releases_created": "true", "paths_released": json.dumps([path]), "prs_created": "false",
+                    path + "--release_created": "true", path + "--version": version, path + "--sha": SHA,
+                    path + "--tag_name": f"{component}-{version}", path + "--major": version.split(".")[0],
+                    path + "--path": path, path + "--body": "### Bug Fixes\n\n* fix"}
+
+        sprig = jobs(from_outputs(released("sprig", "1.0.2"), ROOT))
+        self.assertEqual(sprig["plan"], [{"package": "sprig", "version": "1.0.2", "sha": SHA}])
+        # release-please.yml skips `publish (sdk)` on 'null' and still runs the integrations after a skipped SDK job.
+        self.assertEqual(json.dumps(sprig["sdk"]), "null")
+        self.assertEqual(sprig["integrations"], [{"package": "sprig", "version": "1.0.2", "sha": SHA}])
+        sdk = jobs(from_outputs(released("sdk", "1.4.2"), ROOT))
+        self.assertEqual((sdk["sdk"], sdk["integrations"]), ({"package": "sdk", "version": "1.4.2", "sha": SHA}, []))
+        self.assertEqual(jobs(from_outputs({"releases_created": "false", "paths_released": "[]"}, ROOT))["plan"], [])
+
     def test_release_workflow_is_data_driven(self):
         release = (ROOT / ".github/workflows/release-please.yml").read_text()
         publish = (ROOT / ".github/workflows/publish.yml").read_text()

@@ -649,7 +649,7 @@ def step_7(lab):
     check('manual drift' in lab.current['jobs'][-1]['error'], lab.current['jobs'][-1]['error'])
     check(lab.refs('sprig') == before and len(lab.pulls('sprig')) == 2, 'drift run wrote refs or a PR')
     lab.proved('a hand edit on sprig main stopped sprig 0.1.3 before any branch, PR or tag')
-    # Ingest (reverse sync) is not implemented yet: a person reverts the edit by a reviewed PR instead.
+    # The edit is to the generated README, which sync back cannot copy; a person reverts it by a reviewed PR.
     lab.human_change('sprig', 'revert: hand edit on the public repository',
                      lambda work: git(work, 'checkout', 'HEAD~1', '--', 'README.md'))
     check(lab.recover() == {'sprig 0.1.3': 'awaiting_review', 'sprig 0.1.9': 'skipped incomplete'},

@@ -1,4 +1,5 @@
 """Publish through reviewed GitHub PRs. Never write the publication main branch."""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -6,7 +7,7 @@ import re
 import shutil
 import tempfile
 
-from common import OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, git, load, run, swift_options, text
+from common import OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, git, load, run, swift_options, text, url
 import release_notes
 
 BOT = 'rudderstack-github-actions[bot]'
@@ -14,10 +15,17 @@ BOT_EMAIL = re.compile(r'[1-9][0-9]*\+' + re.escape(BOT) + r'@users\.noreply\.gi
 MODES = ('normal', 'takeover', 'bootstrap')
 README_ONLY = re.compile(r'(?:README|LICENSE)[^/]*\Z|\.gitignore\Z', re.I)
 WORKFLOWS = 'Remove .github/workflows by PR first'
+ABANDON = 'abandon'  # label on a closed publication PR; also the revert PR branch prefix
+ROLL_FORWARD = '{version} is already public and is never discarded; roll forward with a new release instead'
+
+
+class Abandoned(ValueError):
+    """The version was discarded before its tag; nothing is published for it."""
 
 
 def branch_for(key, version, mode='normal'):
-    return f'{"takeover" if mode == "takeover" else "publication"}/{key}/{version}'
+    prefix = mode if mode in ('takeover', ABANDON) else 'publication'
+    return f'{prefix}/{key}/{version}'
 
 
 def repository_for(key):
@@ -56,6 +64,24 @@ def validate_pr(pr, key, version, mode='normal'):
             or (pr['head']['repo'] or {}).get('full_name') != repository
             or pr['user']['login'] != BOT):
         raise ValueError('Publication PR identity or destination differs')
+
+
+def abandon_state(key, version, pr):
+    """Derived from GitHub only: `abandoned`, `abandoning` (revert PR open) or None (publishable).
+
+    A closed unmerged PR with label `abandon` discards a version before merge; a merged bot revert PR after.
+    """
+    if not pr or pr['state'] != 'closed':
+        return None
+    validate_pr(pr, key, version)
+    if not pr['merged']:
+        return 'abandoned' if any(label['name'] == ABANDON for label in pr.get('labels') or []) else None
+    revert = find_pr(key, version, ABANDON)
+    if not revert:
+        return None
+    validate_pr(revert, key, version, ABANDON)
+    # A revert PR closed without merging cancels the request.
+    return 'abandoned' if revert['merged'] else 'abandoning' if revert['state'] == 'open' else None
 
 
 def check_identity(repo):
@@ -121,8 +147,13 @@ def reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, mod
     pr = find_pr(key, version, mode)
     if pr:
         validate_pr(pr, key, version, mode)
+        # Before the merged path: a reverted merge is still an ancestor of main and must never be tagged.
+        status = abandon_state(key, version, pr) if mode != 'takeover' else None
+        if status:
+            raise Abandoned(f'{version} is {status}; it is never tagged')
         if pr['state'] == 'closed' and not pr['merged']:
-            raise ValueError('Publication PR was closed without merging; review required')
+            raise ValueError('Publication PR was closed without merging; review required '
+                             f'(label it {ABANDON} to discard the version)')
         sha = pr['merge_commit_sha'] if pr['merged'] else pr['head']['sha']
         if not re.fullmatch('[0-9a-f]{40}', sha or ''):
             raise ValueError('Publication PR commit is missing')
@@ -183,3 +214,75 @@ def reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, mod
     if pr['head']['sha'] != git(repo, 'rev-parse', 'HEAD'):
         raise ValueError('Created publication PR head differs')
     return None, pr
+
+
+def abandon(key, version, repo, verify_tree):
+    """Discard a merged, untagged version: a bot revert PR returns main to the last published record.
+
+    `repo` is a clone of the publication repository. Returns (status, PR). A tagged version is refused.
+    """
+    if git(repo, 'for-each-ref', '--format=%(refname)', f'refs/tags/{version}'):
+        raise ValueError(ROLL_FORWARD.format(version=version))
+    pr = find_pr(key, version)
+    if not pr:
+        raise ValueError('No publication PR for this version; nothing to abandon')
+    status = abandon_state(key, version, pr)
+    if status:
+        return status, find_pr(key, version, ABANDON) or pr
+    if not pr['merged']:
+        raise ValueError(f'Publication PR is not merged; close it with label {ABANDON} instead')
+    branch = branch_for(key, version, ABANDON)
+    if find_pr(key, version, ABANDON):
+        raise ValueError(f'Abandon PR was closed without merging; delete branch {branch} to request it again')
+    remote_ref = f'refs/remotes/origin/{branch}'
+    pushed = bool(git(repo, 'for-each-ref', '--format=%(refname)', remote_ref))
+    if pushed:
+        # A prior push can exist after an interrupted PR creation. Reuse it.
+        git(repo, 'checkout', '--detach', remote_ref)
+    else:
+        check_identity(repo)
+        sha = pr['merge_commit_sha']
+        if not re.fullmatch('[0-9a-f]{40}', sha or ''):
+            raise ValueError('Publication PR commit is missing')
+        git(repo, 'fetch', '--no-tags', 'origin', sha)
+        git(repo, 'merge-base', '--is-ancestor', sha, 'origin/main')
+        git(repo, 'checkout', '-b', branch, 'origin/main')
+        # Squash and rebase merges have one parent; a merge commit reverts against its first parent.
+        parents = git(repo, 'rev-list', '--parents', '-n', '1', sha).split()[1:]
+        git(repo, 'revert', '--no-edit', *(['-m', '1'] if len(parents) > 1 else []), sha)
+    # main returns to an earlier verified record, so the next version's drift check and base stay correct.
+    if (repo / '.publication.json').exists():
+        previous = verify_tree(repo)
+        if tuple(map(int, previous['version'].split('.'))) >= tuple(map(int, version.split('.'))):
+            raise ValueError('Revert does not restore an earlier publication')
+    if not pushed:
+        git(repo, 'push', 'origin', f'HEAD:refs/heads/{branch}')
+    # The title and body are the revert commit's own message.
+    run(['gh', 'pr', 'create', '--repo', repository_for(key), '--base', RELEASE_BRANCH, '--head', branch,
+         '--title', git(repo, 'log', '-1', '--format=%s'), '--body', git(repo, 'log', '-1', '--format=%b')])
+    revert = find_pr(key, version, ABANDON)
+    if not revert:
+        raise ValueError('Created abandon PR cannot be verified')
+    validate_pr(revert, key, version, ABANDON)
+    if revert['head']['sha'] != git(repo, 'rev-parse', 'HEAD'):
+        raise ValueError('Created abandon PR head differs')
+    return 'awaiting_review', revert
+
+
+if __name__ == '__main__':
+    from project import SEMVER
+    from publish import verify_tree
+    parser = argparse.ArgumentParser(description='Discard a merged publication that has no public tag yet.')
+    parser.add_argument('package', choices=list(allowlist()))
+    parser.add_argument('version')
+    args = parser.parse_args()
+    if not SEMVER.fullmatch(args.version):
+        raise SystemExit('::error::Version must be X.Y.Z')
+    with tempfile.TemporaryDirectory(prefix='abandon-') as temp:
+        clone = Path(temp) / 'publication'
+        run(['git', 'clone', '--no-checkout', url(args.package), clone])
+        try:
+            result, found = abandon(args.package, args.version, clone, verify_tree)
+        except ValueError as error:
+            raise SystemExit(f'::error::{error}')
+    print(f'::notice::{args.package} {args.version}: {result} {found["html_url"]}')
