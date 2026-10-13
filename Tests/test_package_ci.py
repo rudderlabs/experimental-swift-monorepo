@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from xml.etree import ElementTree
 
 os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # ignore personal git settings such as tag.gpgsign
@@ -19,7 +20,7 @@ os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from common import ROOT, commit, git, write_json
-from package_ci import (changed, ci_plan, failed_needs, main, manifest_problems, matrix, scope_warnings, test_command,
+from package_ci import (changed, ci_plan, failed_needs, failures, main, manifest_problems, matrix, scope_warnings, test_command,
                         test_scheme, test_targets)
 
 FIXTURE = ROOT / "Tests/Fixtures/demo"
@@ -226,12 +227,21 @@ class TestTargetTests(unittest.TestCase):
         self.assertEqual(test_targets(DEMO, {"path": "Integrations/Sprig", "target": "DemoSprig"}), ["DemoTests"])
 
     def test_command_uses_the_package_test_scheme_and_the_picked_simulator(self):
-        command = test_command(DEMO, "sprig", {"path": "Integrations/Sprig", "target": "DemoSprig"}, "UDID-1")
+        command = test_command(DEMO, "sprig", {"path": "Integrations/Sprig", "target": "DemoSprig"}, "UDID-1", "/tmp/r.xcresult")
         self.assertEqual(command, ["xcodebuild", "test", "-quiet", "-collect-test-diagnostics", "never", "-parallel-testing-enabled", "NO",
                                    "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "120", "-scheme", "package-ci-sprig",
-                                   "-destination", "platform=iOS Simulator,id=UDID-1", "-only-testing:DemoTests"])
+                                   "-destination", "platform=iOS Simulator,id=UDID-1", "-resultBundlePath", "/tmp/r.xcresult",
+                                   "-only-testing:DemoTests"])
         with self.assertRaisesRegex(ValueError, "no test target"):
-            test_command(DEMO, "x", {"path": "Integrations/X", "target": "X"}, "UDID-1")
+            test_command(DEMO, "x", {"path": "Integrations/X", "target": "X"}, "UDID-1", "/tmp/r.xcresult")
+
+    def test_failures_print_each_failed_test_with_its_message(self):
+        summary = {"testFailures": [{"testIdentifierString": "AnalyticsTests/testTrack()",
+                                     "failureText": "Expectation failed: count == 1\n"}]}
+        with patch("package_ci.run", return_value=json.dumps(summary)):
+            self.assertEqual(failures("r.xcresult"), ["AnalyticsTests/testTrack(): Expectation failed: count == 1"])
+        with patch("package_ci.run", side_effect=RuntimeError("Command failed: xcrun ['xcresulttool']\nno bundle")):
+            self.assertEqual(failures("r.xcresult"), ["(no failure details: Command failed: xcrun ['xcresulttool'])"])
 
     def test_scheme_builds_and_tests_only_the_package_test_targets_and_is_removed_after_the_run(self):
         # `-only-testing` limits what runs, not what builds: the scheme must hold only this package's test targets.

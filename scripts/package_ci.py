@@ -132,7 +132,7 @@ def test_scheme(data, key, package, root=ROOT):
         path.unlink(missing_ok=True)
 
 
-def test_command(data, key, package, simulator):
+def test_command(data, key, package, simulator, results):
     targets = test_targets(data, package)
     if not targets:
         raise ValueError(f"{key}: no test target under {package['path']}/Tests or depending on {package['target']}")
@@ -141,7 +141,17 @@ def test_command(data, key, package, simulator):
     return ["xcodebuild", "test", "-quiet", "-collect-test-diagnostics", "never", "-parallel-testing-enabled", "NO",
             "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "120",
             "-scheme", SCHEME.format(key), "-destination", f"platform=iOS Simulator,id={simulator}",
-            *[f"-only-testing:{name}" for name in targets]]
+            "-resultBundlePath", str(results), *[f"-only-testing:{name}" for name in targets]]
+
+
+def failures(results):
+    """`<test>: <message>` for each failed test in a result bundle; `-quiet` prints only the test names."""
+    try:
+        summary = json.loads(run(["xcrun", "xcresulttool", "get", "test-results", "summary", "--path", results]))
+    except (RuntimeError, ValueError) as error:
+        return [f"(no failure details: {str(error).splitlines()[0]})"]
+    return [f"{f.get('testIdentifierString', f.get('testName', '?'))}: {f.get('failureText', '').strip()}"
+            for f in summary.get("testFailures", [])]
 
 
 def test(keys=None, root=ROOT):
@@ -158,12 +168,15 @@ def test(keys=None, root=ROOT):
     data = manifest(root)
     simulator = run([PICK_SIMULATOR], cwd=root)
     for key in keys or packages:
-        command = test_command(data, key, packages[key], simulator)
-        print(f"test ({key}): {' '.join(command)}", flush=True)
-        with test_scheme(data, key, packages[key], root):
-            failed = subprocess.run(command, cwd=root).returncode
-        if failed:
-            raise SystemExit(f"test ({key}) failed")
+        with tempfile.TemporaryDirectory(prefix=f"test-{key}-") as temp:
+            results = Path(temp) / "results.xcresult"
+            command = test_command(data, key, packages[key], simulator, results)
+            print(f"test ({key}): {' '.join(command)}", flush=True)
+            with test_scheme(data, key, packages[key], root):
+                failed = subprocess.run(command, cwd=root).returncode
+            if failed:
+                print(f"test ({key}) failures:", *[f"  {line}" for line in failures(results)], sep="\n", flush=True)
+                raise SystemExit(f"test ({key}) failed")
         print(f"test ({key}) passed", flush=True)
 
 
