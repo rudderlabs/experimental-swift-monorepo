@@ -5,6 +5,7 @@ run the same commands.
 """
 import argparse
 import ast
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -12,6 +13,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from xml.sax.saxutils import quoteattr
 
 from common import ROOT, anonymous_env, git, inventory, run, url
 from dependency_policy import manifest
@@ -22,6 +24,8 @@ from release_plan import affected
 TYPES = "feat|fix|refactor|perf|style|test|docs|chore|build|ci|revert"
 TITLE = re.compile(rf"(?:{TYPES})\((?P<scope>[^)]*)\)!?: ")
 PICK_SIMULATOR = ROOT / "scripts/ci/pick-simulator.sh"
+# Per-package test scheme, written for each `test (<key>)` run and removed after it (test_scheme).
+SCHEME = "package-ci-{}"
 # PR CI selection (D34). A trailing slash matches a folder. The scripts package_ci.py imports also count as BUILD.
 BUILD = ("Package.swift", "Package.resolved", ".swiftlint.yml", "release/packages.json", "release/allowlist.json",
          ".github/workflows/ci.yml", "scripts/ci/")
@@ -100,20 +104,35 @@ def test_targets(data, package):
                    for d in t["dependencies"])]
 
 
-def scheme(name, schemes):
-    """Xcode adds `<Package>-Package` only when the package has several products; one product gets `<Package>`."""
-    for candidate in (name + "-Package", name):
-        if candidate in schemes:
-            return candidate
-    raise ValueError(f"No Xcode scheme for package {name} (found: {', '.join(schemes) or 'none'})")
+def scheme_xml(targets):
+    """A scheme whose build and test actions hold only `targets`. `-only-testing` limits what runs, not what builds:
+    the package's `-Package` scheme compiles every test target and its vendors (an integration job built Firebase)."""
+    def ref(name):
+        name = quoteattr(name)
+        return (f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier={name} BuildableName={name}'
+                f' BlueprintName={name} ReferencedContainer="container:"/>')
+    build = "".join(f'<BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO"'
+                    f' buildForArchiving="NO" buildForAnalyzing="NO">{ref(t)}</BuildActionEntry>' for t in targets)
+    tests = "".join(f'<TestableReference skipped="NO">{ref(t)}</TestableReference>' for t in targets)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<Scheme version="1.7">'
+            f'<BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries>{build}'
+            '</BuildActionEntries></BuildAction><TestAction buildConfiguration="Debug" shouldUseLaunchSchemeArgsEnv="YES">'
+            f'<Testables>{tests}</Testables></TestAction></Scheme>\n')
 
 
-def schemes(root=ROOT):
-    data = json.loads(run(["xcodebuild", "-list", "-json"], cwd=root))
-    return (data.get("workspace") or data.get("project") or {}).get("schemes", [])
+@contextlib.contextmanager
+def test_scheme(data, key, package, root=ROOT):
+    """Writes the package's test scheme into the git-ignored .swiftpm/ for one run, so nothing is committed (D18)."""
+    path = root / ".swiftpm/xcode/xcshareddata/xcschemes" / f"{SCHEME.format(key)}.xcscheme"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(scheme_xml(test_targets(data, package)))
+    try:
+        yield path.stem
+    finally:
+        path.unlink(missing_ok=True)
 
 
-def test_command(data, key, package, simulator, available=None):
+def test_command(data, key, package, simulator):
     targets = test_targets(data, package)
     if not targets:
         raise ValueError(f"{key}: no test target under {package['path']}/Tests or depending on {package['target']}")
@@ -121,7 +140,7 @@ def test_command(data, key, package, simulator, available=None):
     # Serial, like the SDK's `swift test --no-parallel` (its async tests hang in parallel); a hung test fails after 2 min.
     return ["xcodebuild", "test", "-quiet", "-collect-test-diagnostics", "never", "-parallel-testing-enabled", "NO",
             "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "120",
-            "-scheme", scheme(data["name"], available if available is not None else [data["name"] + "-Package"]), "-destination", f"platform=iOS Simulator,id={simulator}",
+            "-scheme", SCHEME.format(key), "-destination", f"platform=iOS Simulator,id={simulator}",
             *[f"-only-testing:{name}" for name in targets]]
 
 
@@ -138,11 +157,12 @@ def test(keys=None, root=ROOT):
         raise ValueError(f"Unknown package: {', '.join(unknown)} (known: {', '.join(packages) or 'none'})")
     data = manifest(root)
     simulator = run([PICK_SIMULATOR], cwd=root)
-    available = schemes(root)
     for key in keys or packages:
-        command = test_command(data, key, packages[key], simulator, available)
+        command = test_command(data, key, packages[key], simulator)
         print(f"test ({key}): {' '.join(command)}", flush=True)
-        if subprocess.run(command, cwd=root).returncode:
+        with test_scheme(data, key, packages[key], root):
+            failed = subprocess.run(command, cwd=root).returncode
+        if failed:
             raise SystemExit(f"test ({key}) failed")
         print(f"test ({key}) passed", flush=True)
 

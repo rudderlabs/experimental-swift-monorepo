@@ -37,6 +37,7 @@ class EventUploaderTests {
     deinit {
         MockProvider.teardownMockURLSession()
         eventUploader.stop()
+        analytics.shutdown()
         let storage = mockStorage
         Task.detached {
             await storage.removeAll()
@@ -118,7 +119,7 @@ class EventUploaderTests {
         
         // Configure mock to return 400 error (non-retryable)
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
             return (statusCode: 400, data: nil, headers: nil)
         }
@@ -142,14 +143,12 @@ class EventUploaderTests {
             return
         }
         
-        var callCount = 0
+        let callCount = RequestCounter()
         // Configure mock to return 502 error
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
-            callCount += 1
-            
-            if callCount == 1 {
+            if callCount.increment() == 1 {
                 return (statusCode: 502, data: nil, headers: nil)
             } else {
                 // Success after retry
@@ -159,7 +158,7 @@ class EventUploaderTests {
         
         await eventUploader.uploadBatch(dataItem.batch, reference: dataItem.reference)
         
-        #expect(callCount >= 2)
+        #expect(callCount.value >= 2)
         #expect(mockStorage.batchCount == 0)
     }
     
@@ -177,14 +176,13 @@ class EventUploaderTests {
             return
         }
         
-        var callCount = 0
+        let callCount = RequestCounter()
         
         // Configure mock to simulate network unavailable
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
-            callCount += 1
-            if callCount == 1 {
+            if callCount.increment() == 1 {
                 throw URLError(.notConnectedToInternet)
             } else {
                 return (statusCode: 200, data: "{}".data(using: .utf8), headers: nil)
@@ -193,7 +191,7 @@ class EventUploaderTests {
         
         await eventUploader.uploadBatch(dataItem.batch, reference: dataItem.reference)
         
-        #expect(callCount >= 2)
+        #expect(callCount.value >= 2)
         #expect(mockStorage.batchCount == 0)
     }
     
@@ -211,14 +209,13 @@ class EventUploaderTests {
             return
         }
         
-        var callCount = 0
+        let callCount = RequestCounter()
         
         // Configure mock to simulate timeout
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
-            callCount += 1
-            if callCount == 1 {
+            if callCount.increment() == 1 {
                 throw URLError(.timedOut)
             } else {
                 return (statusCode: 200, data: "{}".data(using: .utf8), headers: nil)
@@ -227,7 +224,7 @@ class EventUploaderTests {
         
         await eventUploader.uploadBatch(dataItem.batch, reference: dataItem.reference)
 
-        #expect(callCount >= 2)
+        #expect(callCount.value >= 2)
         #expect(mockStorage.batchCount == 0)
     }
     
@@ -258,19 +255,19 @@ class EventUploaderTests {
             return
         }
         
-        var callCount = 0
+        let callCount = RequestCounter()
         
         // Configure mock to return 401 error (invalid write key)
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
-            callCount += 1
+            callCount.increment()
             return (statusCode: 401, data: nil, headers: nil)
         }
         
         await eventUploader.uploadBatch(dataItem.batch, reference: dataItem.reference)
         
-        #expect(callCount == 1) // Should not have retried
+        #expect(callCount.value == 1) // Should not have retried
         #expect(uploadChannel.isClosed) // Upload channel should be closed
         #expect(analytics.isAnalyticsShutdown) // Analytics should be shutdown
     }
@@ -289,19 +286,19 @@ class EventUploaderTests {
             return
         }
         
-        var callCount = 0
+        let callCount = RequestCounter()
         
         // Configure mock to return 404 error (source not found)
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
-            callCount += 1
+            callCount.increment()
             return (statusCode: 404, data: nil, headers: nil)
         }
         
         await eventUploader.uploadBatch(dataItem.batch, reference: dataItem.reference)
         
-        #expect(callCount == 1) // Should not have retried
+        #expect(callCount.value == 1) // Should not have retried
         #expect(uploadChannel.isClosed) // Upload channel should be closed
         #expect(!analytics.isSourceEnabled) // Source should be disabled
     }
@@ -320,19 +317,19 @@ class EventUploaderTests {
             return
         }
         
-        var callCount = 0
+        let callCount = RequestCounter()
         
         // Configure mock to return 413 error (payload too large)
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
-            callCount += 1
+            callCount.increment()
             return (statusCode: 413, data: nil, headers: nil)
         }
         
         await eventUploader.uploadBatch(dataItem.batch, reference: dataItem.reference)
         
-        #expect(callCount == 1) // Should not have retried
+        #expect(callCount.value == 1) // Should not have retried
         #expect(mockStorage.batchCount == 0)
     }
 
@@ -350,13 +347,13 @@ class EventUploaderTests {
             return
         }
         
-        var callCount = 0
+        let callCount = RequestCounter()
         
         // Configure mock to return success
         MockProvider.setupMockURLSession()
-        MockURLProtocol.requestHandler = { request in
+        MockURLProtocol.handleRequests(sentWith: analytics.configuration.writeKey) { request in
             guard request.httpMethod == "POST" else { return (200, nil, nil) }
-            callCount += 1
+            callCount.increment()
             let successResponse = """
             {"success": "ok"}
             """.data(using: .utf8)
@@ -365,7 +362,7 @@ class EventUploaderTests {
         
         await eventUploader.uploadBatch(dataItem.batch, reference: dataItem.reference)
         
-        #expect(callCount == 1) // Should only be called once
+        #expect(callCount.value == 1) // Should only be called once
         #expect(mockStorage.batchCount == 0)
     }
 #endif

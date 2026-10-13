@@ -27,6 +27,9 @@ final class MockProvider {
         sessionConfig: SessionConfiguration? = nil
     ) -> Analytics {
         let config = createMockConfiguration(storage: storage)
+        // The default flush policies are shared instances: their timers keep flushing every instance created here,
+        // and an Analytics instance is never released, so those flushes would reach later tests' request handlers.
+        config.flushPolicies = []
         
         if let sessionConfig = sessionConfig {
             config.sessionConfiguration = sessionConfig
@@ -188,6 +191,9 @@ extension MockProvider {
             let data = try JSONSerialization.data(withJSONObject: json)
             return (responseCode, data, ["Content-Type": "application/json"])
         }
+        // Set per test, not in a suite's init/deinit: a previous suite instance can be released after the next
+        // test's init, and resetting this global there would silently absorb the running test's requests.
+        MockURLProtocol.forwardGetRequestsToHandler = true
         
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]

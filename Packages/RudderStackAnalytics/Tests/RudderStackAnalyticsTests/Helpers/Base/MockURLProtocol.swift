@@ -97,3 +97,54 @@ final class MockURLProtocol: URLProtocol {
         /* Default implementation (no-op) */
     }
 }
+
+// MARK: - Per-test request scoping
+
+extension MockURLProtocol {
+
+    /**
+     Installs `handler` for requests sent by the `Analytics` instance configured with `writeKey` only.
+
+     `requestHandler` is global, and `Analytics` instances left over from earlier tests can still send requests
+     (retries, flushes, source config downloads). Those requests carry a different write key; they get an empty
+     `200` here so they can neither reach the running test's handler nor skew its counts.
+     */
+    static func handleRequests(
+        sentWith writeKey: String,
+        _ handler: @escaping (URLRequest) throws -> (Int, Data?, [String: String]?)
+    ) {
+        let authorization = "Basic " + Data((writeKey + ":").utf8).base64EncodedString()
+        let ignoredRequestStatusCode = 200
+        requestHandler = { request in
+            guard request.value(forHTTPHeaderField: "Authorization") == authorization else {
+                return (ignoredRequestStatusCode, nil, nil)
+            }
+            return try handler(request)
+        }
+    }
+}
+
+// MARK: - RequestCounter
+
+/**
+ A thread-safe counter for requests seen by a `MockURLProtocol` handler, which runs on `URLSession`'s queue.
+ */
+final class RequestCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    /// Increments the count and returns the new value.
+    @discardableResult
+    func increment() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
+        return count
+    }
+}

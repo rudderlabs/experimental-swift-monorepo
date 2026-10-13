@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from xml.etree import ElementTree
 
 os.environ["GIT_CONFIG_GLOBAL"] = os.devnull  # ignore personal git settings such as tag.gpgsign
 os.environ.update(GIT_CONFIG_COUNT="3", GIT_CONFIG_KEY_0="gc.auto", GIT_CONFIG_VALUE_0="0",  # no background gc
@@ -18,8 +19,8 @@ os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from common import ROOT, commit, git, write_json
-from package_ci import (changed, ci_plan, failed_needs, main, manifest_problems, matrix, scheme, scope_warnings,
-                        test_command, test_targets)
+from package_ci import (changed, ci_plan, failed_needs, main, manifest_problems, matrix, scope_warnings, test_command,
+                        test_scheme, test_targets)
 
 FIXTURE = ROOT / "Tests/Fixtures/demo"
 PICK = ROOT / "scripts/ci/pick-simulator.sh"
@@ -224,24 +225,36 @@ class TestTargetTests(unittest.TestCase):
                          ["DemoTests", "RudderIntegrationKitTests"])
         self.assertEqual(test_targets(DEMO, {"path": "Integrations/Sprig", "target": "DemoSprig"}), ["DemoTests"])
 
-    def test_command_uses_the_package_scheme_and_the_picked_simulator(self):
+    def test_command_uses_the_package_test_scheme_and_the_picked_simulator(self):
         command = test_command(DEMO, "sprig", {"path": "Integrations/Sprig", "target": "DemoSprig"}, "UDID-1")
         self.assertEqual(command, ["xcodebuild", "test", "-quiet", "-collect-test-diagnostics", "never", "-parallel-testing-enabled", "NO",
-                                   "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "120", "-scheme", "SwiftPublicationExperiment-Package",
+                                   "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "120", "-scheme", "package-ci-sprig",
                                    "-destination", "platform=iOS Simulator,id=UDID-1", "-only-testing:DemoTests"])
         with self.assertRaisesRegex(ValueError, "no test target"):
             test_command(DEMO, "x", {"path": "Integrations/X", "target": "X"}, "UDID-1")
 
-    def test_scheme_matches_what_xcode_generates(self):
-        # One product (only the SDK imported): Xcode names the scheme after the package, with no -Package suffix.
-        self.assertEqual(scheme("SwiftPublicationExperiment", ["SwiftPublicationExperiment"]), "SwiftPublicationExperiment")
-        self.assertEqual(scheme("SwiftPublicationExperiment", ["DemoSDK", "SwiftPublicationExperiment-Package"]),
-                         "SwiftPublicationExperiment-Package")
-        command = test_command(DEMO, "sprig", {"path": "Integrations/Sprig", "target": "DemoSprig"}, "UDID-1",
-                               ["SwiftPublicationExperiment"])
-        self.assertIn("SwiftPublicationExperiment", command)
-        with self.assertRaisesRegex(ValueError, "No Xcode scheme"):
-            scheme("SwiftPublicationExperiment", ["Other"])
+    def test_scheme_builds_and_tests_only_the_package_test_targets_and_is_removed_after_the_run(self):
+        # `-only-testing` limits what runs, not what builds: the scheme must hold only this package's test targets.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            folder = root / ".swiftpm/xcode/xcshareddata/xcschemes"
+            with test_scheme(DEMO, "sdk", {"path": "Packages/DemoSDK", "target": "DemoSDK"}, root) as name:
+                self.assertEqual(name, "package-ci-sdk")
+                scheme = ElementTree.parse(folder / "package-ci-sdk.xcscheme").getroot()
+                built, tested = ([e.find("BuildableReference").get("BlueprintName") for e in scheme.iter(tag)]
+                                 for tag in ("BuildActionEntry", "TestableReference"))
+                self.assertEqual(built, ["DemoTests", "RudderIntegrationKitTests"])
+                self.assertEqual(tested, ["DemoTests", "RudderIntegrationKitTests"])
+                self.assertEqual({e.get("buildForTesting") for e in scheme.iter("BuildActionEntry")}, {"YES"})
+                self.assertEqual({e.get("buildForRunning") for e in scheme.iter("BuildActionEntry")}, {"NO"})
+            self.assertEqual(list(folder.iterdir()), [])
+            with self.assertRaises(RuntimeError):
+                with test_scheme(DEMO, "sprig", {"path": "Integrations/Sprig", "target": "DemoSprig"}, root):
+                    raise RuntimeError("xcodebuild interrupted")
+            self.assertEqual(list(folder.iterdir()), [])
+
+    def test_swiftpm_folder_is_git_ignored(self):
+        self.assertIn(".swiftpm/", (ROOT / ".gitignore").read_text().splitlines())
 
 
 def dump(platforms, dependencies):
