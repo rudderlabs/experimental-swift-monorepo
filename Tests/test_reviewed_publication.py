@@ -299,6 +299,7 @@ class ReviewedPublicationTests(unittest.TestCase):
              patch('publish.inventory', return_value={'sprig': {'repository': 'experimental-integration-swift-sprig'}}), \
              patch('publish.validate'), patch('publish.run', side_effect=remote_command), \
              patch('publish.source_commit', return_value='a' * 40), \
+             patch('publish.source_line', return_value='main'), \
              patch.dict(os.environ, GIT_CONFIG_GLOBAL=str(self.identity())), \
              patch('publish.ensure_release', return_value='https://example.invalid/release') as release, \
              patch('reviewed_publication.find_pr', side_effect=self.find), \
@@ -325,6 +326,8 @@ class ReviewedPublicationTests(unittest.TestCase):
             self.assertEqual(result['publicationCommit'], merged)
             self.assertEqual(git(self.remote, 'rev-parse', 'main'), merged)
             release.assert_called_once()
+            self.assertIs(release.call_args.args[5], True)  # main line: GitHub's default "Latest" choice
+            self.assertEqual(result['branch'], 'main')
             # A re-run after an exporter change verifies the tag from its stored record (D25).
             with patch('publish.export', side_effect=AssertionError('never re-exported')):
                 self.assertEqual(publish('sprig', '0.1.1')['publicationCommit'], merged)

@@ -1,8 +1,8 @@
 """Local publication lifecycle on temporary fixture repositories. Git, SwiftPM and Xcode are real; GitHub is modeled.
 
 `python3 scripts/rehearse.py` builds a throwaway monorepo from Tests/Fixtures/demo and one local bare "public"
-repository per allowlisted package, then runs bootstrap, takeover, releases, Tag & Release Packages, drift and clean
-consumers.
+repository per allowlisted package, then runs bootstrap, takeover, releases, Tag & Release Packages, drift, clean
+consumers and a maintenance-line patch.
 Nothing reaches GitHub: `gh` is a local model on PATH and every github.com Git URL is rewritten to a local
 bare repository or to a path that does not exist.
 """
@@ -23,6 +23,7 @@ from urllib.parse import parse_qsl
 from common import (ROOT, CONSUMER_NAME, OWNER, RELEASE_BRANCH, SOURCE_NAME, allowlist, anonymous_env, commit, git,
                     inventory, load, run, swift_options, url, write_json)
 from anchor import anchor
+from maintenance_branch import create as create_maintenance_branch, source_line
 import project
 import publish
 import reviewed_publication
@@ -37,11 +38,14 @@ SOURCE = f'{OWNER}/{SOURCE_NAME}'
 COLLECTIONS = 'https://github.com/apple/swift-collections.git'
 BOT_EMAIL = '12345678+rudderstack-github-actions[bot]@users.noreply.github.com'  # modeled App bot user id
 FAILURES = (ValueError, RuntimeError, OSError, KeyError)
-# Models the branch and tag rulesets: main changes only through a reviewed merge, and tags never move.
+# Models the branch and tag rulesets: main and release/X.Y.x change only through a reviewed merge (the bot may create
+# a release/X.Y.x branch), and tags never move.
 HOOK = '''#!/bin/sh
 while read old new ref; do
   case "$ref" in
     refs/heads/main) echo "main changes only through a reviewed pull request" >&2; exit 1;;
+    refs/heads/release/*) [ "$old" = 0000000000000000000000000000000000000000 ] || {
+      echo "release branches change only through a reviewed pull request" >&2; exit 1; };;
     refs/tags/*) [ "$old" = 0000000000000000000000000000000000000000 ] || { echo "tags are immutable" >&2; exit 1; };;
   esac
 done
@@ -167,6 +171,7 @@ def github(args):
             raise ValueError('Release already exists: ' + version)
         releases.append({'tag_name': version, 'name': option('--title'), 'draft': False, 'prerelease': False,
                          'body': Path(option('--notes-file')).read_text(),
+                         'make_latest': 'false' if '--latest=false' in args else 'default',
                          'html_url': f'local-github://{repository}/releases/tag/{version}'})
         output = releases[-1]['html_url']
     elif args[0] == 'api' and args[-1].startswith('repos/'):
@@ -321,11 +326,11 @@ class Lab:
         hook.write_text(HOOK)
         hook.chmod(0o755)
 
-    def human_change(self, key, title, edit):
-        """A person's reviewed PR merged on GitHub: a clone, a commit, then a server-side main update."""
+    def human_change(self, key, title, edit, base=RELEASE_BRANCH):
+        """A person's reviewed PR merged on GitHub: a clone, a commit, then a server-side `base` update."""
         with tempfile.TemporaryDirectory(prefix='rehearsal-human-') as temp:
             work = Path(temp) / 'work'
-            run(['git', 'clone', '--quiet', url(key), work])
+            run(['git', 'clone', '--quiet', '--branch', base, url(key), work])
             edit(work)
             git(work, 'add', '--all')
             if git(work, 'status', '--porcelain'):
@@ -333,11 +338,11 @@ class Lab:
             sha = git(work, 'rev-parse', 'HEAD')
             number = len(git(self.bare(key), 'for-each-ref', 'refs/merges').splitlines()) + 1
             git(work, 'push', '--quiet', 'origin', f'HEAD:refs/merges/{number}')
-        git(self.bare(key), 'update-ref', 'refs/heads/main', sha)
+        git(self.bare(key), 'update-ref', f'refs/heads/{base}', sha)
         return sha
 
     def merge(self, key, branch):
-        """A reviewer merges the bot PR."""
+        """A reviewer merges the bot PR into its base."""
         state = self.state()
         pr = next(p for p in state['pulls'][f'{OWNER}/{NAMES[key]}'] if p['head']['ref'] == branch)
         check(pr['state'] == 'open' and pr['user']['login'] == BOT, f'{branch} is not an open bot PR')
@@ -345,7 +350,7 @@ class Lab:
         check(author == f'{BOT} <{BOT_EMAIL}>', f'Bot PR commit author differs: {author}')
         title = f'Merge pull request #{pr["number"]} from {branch}'
         sha = self.human_change(key, title, lambda work: git(work, 'merge', '--quiet', '--no-ff', '-m', title,
-                                                             'origin/' + branch))
+                                                             'origin/' + branch), pr['base']['ref'])
         pr.update(state='closed', merged=True, merge_commit_sha=sha)
         write_json(self.state_file, state)
         return sha
@@ -360,15 +365,17 @@ class Lab:
         git(self.source, 'push', '--quiet', 'origin', 'main')
         return sha
 
-    def release(self, versions, sdk_minimum=None):
-        """A merged Release Please PR: versions, constants and changelogs, then component tags and source Releases."""
-        packages = inventory(self.source)
-        manifest = load(self.source / '.release-please-manifest.json')
+    def release(self, versions, sdk_minimum=None, work=None, branch=RELEASE_BRANCH):
+        """A merged Release Please PR on `branch` (checked out in `work`, default the source clone on main): versions,
+        constants and changelogs, then component tags and source Releases."""
+        work = work or self.source
+        packages = inventory(work)
+        manifest = load(work / '.release-please-manifest.json')
         for key, version in versions.items():
             package, old = packages[key], manifest[packages[key]['path']]
             if old == version:
                 continue
-            folder = self.source / package['path']
+            folder = work / package['path']
             (folder / 'version.txt').write_text(version + '\n')
             constants = folder / 'Sources' / package['target'] / 'Version.swift'
             constants.write_text(constants.read_text().replace(f'current = "{old}"', f'current = "{version}"'))
@@ -376,14 +383,15 @@ class Lab:
                 changelog.write(f'\n## {version}\n\nLocal lifecycle rehearsal.\n')
             manifest[package['path']] = version
         if sdk_minimum:
-            config = load(self.source / 'release/packages.json')
+            config = load(work / 'release/packages.json')
             for key in sdk_minimum[1]:
                 config['packages'][key]['sdkMinimum'] = sdk_minimum[0]
-            write_json(self.source / 'release/packages.json', config)
-            dependency_markers(self.source)
-        write_json(self.source / '.release-please-manifest.json', manifest)
-        sha = commit(self.source, 'chore: release main')
-        git(self.source, 'push', '--quiet', 'origin', 'main')
+            write_json(work / 'release/packages.json', config)
+            dependency_markers(work)
+        write_json(work / '.release-please-manifest.json', manifest)
+        sha = commit(work, f'chore: release {branch}')
+        git(work, 'push', '--quiet', 'origin', f'HEAD:refs/heads/{branch}')
+        git(self.source, 'fetch', '--quiet', 'origin')
         for key, version in versions.items():
             self.intent(f'{packages[key]["component"]}-{version}', sha)
         return sha
@@ -403,7 +411,8 @@ class Lab:
         """publish.yml: check out the approved source SHA, then publish as the App bot."""
         git(self.release_source, 'fetch', '--quiet', '--tags', 'origin')
         git(self.release_source, 'checkout', '--quiet', '--detach', sha)
-        git(self.release_source, 'merge-base', '--is-ancestor', sha, 'origin/main')
+        # The publish.yml preflight: on main, or on the version's maintenance branch.
+        source_line(self.release_source, key, sha, version)
         with patch.dict(os.environ, GIT_CONFIG_GLOBAL=str(self.bot), ENABLE_EXPERIMENTAL_PUBLICATION='true'):
             try:
                 result = publish.publish(key, version, root=self.release_source, mode=mode)
@@ -466,6 +475,10 @@ class Lab:
         shutil.copytree(FIXTURE, self.source, ignore=shutil.ignore_patterns('.build', '.swiftpm', '__pycache__'))
         for name in ('LICENSE', '.gitignore'):
             shutil.copyfile(ROOT / name, self.source / name)
+        # The real config with the fixture packages: Create Maintenance Branch rewrites it.
+        config = load(ROOT / 'release-please-config.json')
+        config['packages'] = {p['path']: {'component': p['component']} for p in inventory(self.source).values()}
+        write_json(self.source / 'release-please-config.json', config)
         git(self.dir, 'init', '--quiet', '--initial-branch=main', self.source.name)
         commit(self.source, 'chore: import the fixture monorepo')
         run(['git', 'init', '--quiet', '--bare', '--initial-branch=main', self.remotes / (SOURCE_NAME + '.git')])
@@ -683,6 +696,64 @@ def step_9(lab):
         lab.proved('consumer template CLI and iOS Simulator app build with SDK 0.2.0, Sprig 0.1.1, Firebase 0.1.0')
 
 
+def step_10(lab):
+    sdk = lab.bare('sdk')
+    public_main, others = git(sdk, 'rev-parse', 'main'), lab.refs('sprig', 'firebase')
+    git(lab.runner, 'fetch', '--quiet', '--tags', 'origin')
+    for key, version, message in (('sdk', '0.1.0', 'not the latest 0.1 patch; use 0.1.1'),
+                                  ('sprig', '0.1.9', 'main is still on 0.1.3')):
+        try:
+            create_maintenance_branch(key, version, lab.runner)
+        except ValueError as error:
+            check(message in str(error), str(error))
+            continue
+        raise AssertionError(f'{key} {version} maintenance branch was not refused')
+    # Create Maintenance Branch (as the App bot): main is on SDK 0.2.0, customers are on 0.1.x.
+    with patch.dict(os.environ, GIT_CONFIG_GLOBAL=str(lab.bot)):
+        plan = create_maintenance_branch('sdk', '0.1.1', lab.runner)
+    branch = 'release/sdk-0.1.x'
+    check(plan['branch'] == branch and plan['from'] == git(lab.source, 'rev-parse', 'sdk-0.1.1^{commit}'), str(plan))
+    with tempfile.TemporaryDirectory(prefix='rehearsal-maintenance-') as temp:
+        work = Path(temp) / 'work'
+        run(['git', 'clone', '--quiet', '--branch', branch, f'https://github.com/{SOURCE}.git', work])
+        config = load(work / 'release-please-config.json')
+        check(config['packages'] == {'Packages/DemoSDK': {'component': 'sdk', 'versioning': 'always-bump-patch'}},
+              str(config['packages']))
+        # A reviewed fix PR targeting the maintenance branch, then its Release Please PR (a patch, as configured).
+        demo = work / 'Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift'
+        check('apiLevel' not in demo.read_text(), 'the 0.2.0 feature reached the 0.1.x line')
+        demo.write_text(demo.read_text().replace('public static func hasPrivacyManifest',
+                                                 '/// Patched on the 0.1.x line.\n    public static func hasPrivacyManifest'))
+        commit(work, 'fix(sdk): patch the 0.1.x line')
+        git(work, 'push', '--quiet', 'origin', f'HEAD:refs/heads/{branch}')
+        sha = lab.release({'sdk': '0.1.2'}, work=work, branch=branch)
+    status = lab.recover()
+    check(status == {'sdk 0.1.2': 'awaiting_review', 'sprig 0.1.9': 'skipped incomplete'}, str(status))
+    pr = next(p for p in lab.pulls('sdk') if p['head']['ref'] == 'publication/sdk/0.1.2')
+    check(pr['base']['ref'] == 'release/0.1.x', f'publish PR base {pr["base"]["ref"]}')
+    check(git(sdk, 'rev-parse', 'release/0.1.x') == git(sdk, 'rev-parse', '0.1.1^{commit}'),
+          'public release/0.1.x does not start at tag 0.1.1')
+    check(git(sdk, 'rev-parse', 'publication/sdk/0.1.2^') == git(sdk, 'rev-parse', 'release/0.1.x'), 'PR parent')
+    merged = lab.merge('sdk', 'publication/sdk/0.1.2')
+    status = lab.recover()
+    check(status == {'sdk 0.1.2': 'published', 'sprig 0.1.9': 'skipped incomplete'}, str(status))
+    check(git(sdk, 'rev-parse', '0.1.2^{commit}') == merged == git(sdk, 'rev-parse', 'release/0.1.x'),
+          'tag is not the merge commit on release/0.1.x')
+    check(json.loads(git(sdk, 'show', '0.1.2:.publication.json'))['sourceCommit'] == sha, 'provenance')
+    check('apiLevel' not in git(sdk, 'show', '0.1.2:Sources/DemoSDK/DemoSDK.swift'), '0.2.0 code in 0.1.2')
+    check(git(sdk, 'rev-parse', 'main') == public_main and lab.refs('sprig', 'firebase') == others,
+          'the maintenance release changed public main or other packages')
+    release = lab.releases('sdk')[-1]
+    check((release['tag_name'], release['make_latest']) == ('0.1.2', 'false'), str(release))
+    check(lab.recover() == {'sprig 0.1.9': 'skipped incomplete'}, 'Tag & Release Packages is not idempotent')
+    lab.records['maintenanceConsumer'] = lab.consumer('sdk', '0.1.2')
+    lab.proved('Create Maintenance Branch refused a non-latest patch and a line main has not left; it cut '
+               'release/sdk-0.1.x from tag sdk-0.1.1 with an SDK-only, always-bump-patch config')
+    lab.proved('SDK 0.1.2 (fix on release/sdk-0.1.x, without the 0.2.0 feature): the bot created public '
+               'release/0.1.x at tag 0.1.1, the publish PR targeted it, and Tag & Release Packages tagged its merge '
+               'commit; public main and the other packages did not change; the Release is not "Latest"')
+
+
 STEPS = [
     ('bootstrap a README-only public repository', step_1),
     ('take over a foreign public repository', step_2),
@@ -693,6 +764,7 @@ STEPS = [
     ('drift in a public repository blocks publishing', step_7),
     ('Tag & Release Packages is idempotent', step_8),
     ('old tags still resolve for clean consumers', step_9),
+    ('patch an older version line while main is ahead', step_10),
 ]
 
 

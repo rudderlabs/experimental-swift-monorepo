@@ -23,11 +23,19 @@ FIXTURE = Path(__file__).resolve().parent / 'Fixtures' / 'demo'  # inventory and
 
 class PublicationQueueTests(unittest.TestCase):
     def run_queue(self, published=False, wrong_source=False, release_missing=False, open_pr=False,
-                  firebase=False, body=None, draft=False, prs=None, later=False):
+                  firebase=False, body=None, draft=False, prs=None, later=False, lines=None):
         sha, pub = 'a' * 40, 'b' * 40
         intents = [{'tag_name': 'integration-sprig-0.1.1', 'draft': False, 'prerelease': False},
                    {'tag_name': 'unrelated-1.0.0', 'draft': False, 'prerelease': False},
                    {'tag_name': 'sdk-0.2.0', 'draft': True, 'prerelease': False}]
+        # `lines`: version -> source line (main, release/<key>-X.Y.x, or an error for neither).
+        intents += [{'tag_name': f'integration-sprig-{v}', 'draft': False, 'prerelease': False}
+                    for v in lines or {} if v != '0.1.1']
+        def line(root, key, sha, version):
+            value = (lines or {}).get(version, 'main')
+            if isinstance(value, Exception):
+                raise value
+            return value
         if later:
             intents.append({'tag_name': 'integration-sprig-0.1.2', 'draft': False, 'prerelease': False})
         if firebase:
@@ -56,6 +64,7 @@ class PublicationQueueTests(unittest.TestCase):
             return {'state': 'open'} if open_pr and key == 'sprig' else None
         with patch('publication_queue.run', side_effect=command), \
              patch('publication_queue.git', side_effect=git_command), \
+             patch('publication_queue.source_line', side_effect=line), \
              patch('publication_queue.find_pr', side_effect=pr) as find_pr, \
              patch('reviewed_publication.find_pr', side_effect=pr), \
              patch('publication_queue.verify_tree', return_value={
@@ -93,11 +102,31 @@ class PublicationQueueTests(unittest.TestCase):
                                          'status': 'awaiting_review'}])
         self.assertIn(call('sprig', '0.1.1'), self.find_pr)
 
-    def bot_pr(self, version, state='closed', merged=False, labels=(), prefix='publication'):
+    def bot_pr(self, version, state='closed', merged=False, labels=(), prefix='publication', base='main'):
         repository = {'full_name': 'rudderlabs/experimental-integration-swift-sprig'}
         return {'state': state, 'merged': merged, 'labels': [{'name': n} for n in labels],
-                'user': {'login': BOT}, 'base': {'ref': 'main', 'repo': repository},
+                'user': {'login': BOT}, 'base': {'ref': base, 'repo': repository},
                 'head': {'ref': f'{prefix}/sprig/{version}', 'repo': repository}}
+
+    def test_main_and_maintenance_versions_queue_together_each_on_its_base(self):
+        lines = {'0.1.1': 'main', '0.2.0': 'main', '0.1.2': 'release/sprig-0.1.x', '0.1.3': 'release/sprig-0.1.x',
+                 '0.1.9': ValueError('Source commit is on neither main nor release/sprig-0.1.x')}
+        # 0.1.2 was discarded on the public release/0.1.x: found only when its PR is checked against that base.
+        prs = {('sprig', '0.1.2', 'normal'): self.bot_pr('0.1.2', labels=['abandon'], base='release/0.1.x'),
+               ('sprig', '0.1.3', 'normal'): self.bot_pr('0.1.3', state='open', base='release/0.1.x')}
+        pending = self.run_queue(prs=prs, lines=lines)
+        self.assertEqual([i['version'] for i in pending], ['0.1.1', '0.2.0'])
+        self.assertEqual(pending[1], {'package': 'sprig', 'version': '0.2.0', 'source_sha': 'a' * 40})
+        self.assertEqual({s['version']: s['status'] for s in self.skipped},
+                         {'0.1.9': 'incomplete', '0.1.2': 'abandoned', '0.1.3': 'awaiting_review'})
+        self.assertIn('neither main nor release/sprig-0.1.x', self.skipped[0]['error'])
+        # A pending maintenance version is queued like any other, in version order with the main line.
+        del prs[('sprig', '0.1.3', 'normal')]
+        self.assertEqual([i['version'] for i in self.run_queue(prs=prs, lines=lines)], ['0.1.1', '0.1.3', '0.2.0'])
+        # Checked against main instead, the maintenance PR is a broken item, not an abandoned version.
+        lines['0.1.2'] = 'main'
+        self.run_queue(prs=prs, lines=lines)
+        self.assertEqual({s['version']: s['status'] for s in self.skipped}, {'0.1.9': 'incomplete', '0.1.2': 'incomplete'})
 
     def test_abandoned_version_is_reported_and_a_later_version_proceeds(self):
         later = {'package': 'sprig', 'version': '0.1.2', 'source_sha': 'a' * 40}

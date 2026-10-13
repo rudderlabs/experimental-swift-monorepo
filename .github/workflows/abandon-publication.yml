@@ -1,7 +1,7 @@
 name: Abandon Unpublished Version
-# Discards a merged publication PR whose version has no public tag: a bot revert PR returns public main to the
-# last published record; merging it abandons the version. Before merge, close the publication PR with label
-# `abandon` instead. A tagged version is refused: roll forward with a new release.
+# Discards a merged publication PR whose version has no public tag: a bot revert PR returns the public base (main,
+# or release/X.Y.x for a maintenance version) to the last published record; merging it abandons the version.
+# Before merge, close the publication PR with label `abandon` instead. A tagged version is refused: roll forward.
 on:
   workflow_dispatch:
     inputs:
@@ -32,6 +32,8 @@ jobs:
 
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          # Tags and maintenance branches: the version's monorepo tag decides its public base.
+          fetch-depth: 0
           persist-credentials: false
       - name: Validate allowlisted package
         id: preflight

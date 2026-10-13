@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 import tempfile
 
-from common import ROOT, OWNER, SOURCE_NAME, git, inventory, run, url
+from common import ROOT, OWNER, RELEASE_BRANCH, SOURCE_NAME, git, inventory, run, url
+from maintenance_branch import public_base, semver, source_line
 from project import SEMVER
 from publish import verify_tree
 from reviewed_publication import abandon_state, find_pr
@@ -12,15 +13,15 @@ from reviewed_publication import abandon_state, find_pr
 FAILURES = (ValueError, RuntimeError, OSError, KeyError)
 
 
-def state(repo, key, version, sha, public_releases):
-    """None when the version is complete, otherwise its pending state."""
+def state(repo, key, version, sha, public_releases, base=RELEASE_BRANCH):
+    """None when the version is complete, otherwise its pending state. `base` is main or release/X.Y.x."""
     if git(repo, 'for-each-ref', '--format=%(refname)', f'refs/tags/{version}'):
         git(repo, 'checkout', '--detach', f'refs/tags/{version}')
         provenance = verify_tree(repo)
         if provenance['sourceCommit'] != sha or provenance['package'] != key or provenance['version'] != version:
             raise ValueError('Published tag conflicts with source release intent')
         publication_sha = git(repo, 'rev-parse', 'HEAD')
-        git(repo, 'merge-base', '--is-ancestor', publication_sha, 'origin/main')
+        git(repo, 'merge-base', '--is-ancestor', publication_sha, f'origin/{base}')
         # The verified tag carries the provenance; Release notes are presentation (see publish.ensure_release).
         matches = [r for r in public_releases if r['tag_name'] == version]
         if matches:
@@ -33,7 +34,7 @@ def state(repo, key, version, sha, public_releases):
     if pr and pr['state'] == 'open':
         return 'awaiting_review'
     # A discarded version is reported and never tagged; later versions still publish.
-    return abandon_state(key, version, pr) or 'pending'
+    return abandon_state(key, version, pr, base) or 'pending'
 
 
 def queue(root=ROOT):
@@ -45,7 +46,7 @@ def queue(root=ROOT):
     # SDK work precedes integration work.
     for key in sorted(packages, key=lambda k: k != 'sdk'):
         prefix = packages[key]['component'] + '-'
-        intents = []
+        intents, bases = [], {}
         for release in (r for page in pages for r in page):
             tag = release['tag_name']
             if release['draft'] or release['prerelease'] or not tag.startswith(prefix):
@@ -55,7 +56,8 @@ def queue(root=ROOT):
                 if not SEMVER.fullmatch(version):
                     raise ValueError('Malformed experimental component release')
                 sha = git(root, 'rev-parse', f'refs/tags/{tag}^{{commit}}')
-                git(root, 'merge-base', '--is-ancestor', sha, 'origin/main')
+                # On main, or on its maintenance branch release/<key>-X.Y.x; anything else is refused.
+                bases[version] = public_base(source_line(root, key, sha, version), version)
                 intents.append({'package': key, 'version': version, 'source_sha': sha})
             except FAILURES as error:
                 skipped.append({'package': key, 'version': version, 'status': 'incomplete', 'error': str(error)})
@@ -71,9 +73,10 @@ def queue(root=ROOT):
                 skipped += [{**i, 'status': 'incomplete', 'error': str(error)} for i in intents]
                 continue
             public_releases = [r for page in releases for r in page]
-            for intent in sorted(intents, key=lambda i: tuple(map(int, i['version'].split('.')))):
+            for intent in sorted(intents, key=lambda i: semver(i['version'])):
                 try:
-                    status = state(repo, key, intent['version'], intent['source_sha'], public_releases)
+                    status = state(repo, key, intent['version'], intent['source_sha'], public_releases,
+                                   bases[intent['version']])
                 except FAILURES as error:
                     skipped.append({**intent, 'status': 'incomplete', 'error': str(error)})
                     continue

@@ -1,0 +1,65 @@
+name: Create Maintenance Branch
+# Starts release/<key>-X.Y.x at the monorepo tag <component>-X.Y.Z (the latest patch of that line) plus one commit:
+# a release-please-config.json with only that package and "versioning": "always-bump-patch" (scripts/maintenance_branch.py).
+# Fix PRs then target that branch; Release Please opens its release PR there (see docs/reviewed-publication).
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package key from release/allowlist.json and release/packages.json
+        type: string
+        required: true
+      version:
+        description: Existing release to branch from, the latest patch of its line (X.Y.Z, e.g. 1.4.1)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: experimental-maintenance-branch
+  cancel-in-progress: false
+jobs:
+  create:
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: experimental-spm-release
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # v2.22.0
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate package, version, tag and branch (dry run)
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+        run: python3 scripts/maintenance_branch.py create "$PACKAGE" "$VERSION" --dry-run
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        id: token
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: experimental-swift-monorepo
+          permission-contents: write
+      - name: Configure bot identity
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+        run: |
+          id="$(gh api '/users/rudderstack-github-actions%5Bbot%5D' --jq .id)"
+          [[ "$id" =~ ^[1-9][0-9]*$ ]] || { echo "Bot user id lookup failed"; exit 1; }
+          git config --global user.name "rudderstack-github-actions[bot]"
+          git config --global user.email "${id}+rudderstack-github-actions[bot]@users.noreply.github.com"
+      - name: Create the maintenance branch
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh auth setup-git
+          python3 scripts/maintenance_branch.py create "$PACKAGE" "$VERSION" > "$RUNNER_TEMP/maintenance-branch.json"
+          { echo '```json'; cat "$RUNNER_TEMP/maintenance-branch.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -122,6 +122,24 @@ gh release edit "$BAD" --repo "$REPO" --notes-file withdrawn.md
 
 Customers on `from: "1.0.2"` get `1.0.3` with their next package update; customers pinned to `exact: "1.0.2"` must change the pin.
 
+### Patch an older version line
+
+Example: customers are on SDK 1.4.x and `main` has released 1.5.0. Ship a fix as 1.4.2 without the 1.5 changes. Integrations work the same way (for example `release/sprig-1.0.x`).
+
+1. Run Actions → **Create Maintenance Branch** on `main` with `package` (e.g. `sdk`) and `version` = the latest release of the line (e.g. `1.4.1`). It creates `release/sdk-1.4.x` at the monorepo tag `sdk-1.4.1` plus one bot commit `chore(sdk): start 1.4.x maintenance line`: a `release-please-config.json` with only that package and `"versioning": "always-bump-patch"`, so even a `feat:` releases 1.4.2, never 1.5.0. It refuses an existing branch, a missing tag, a version that is not the latest patch of its line, and a line `main` has not left yet (release from `main` then). Try it locally with `python3 scripts/maintenance_branch.py create sdk 1.4.1 --dry-run`.
+2. Open the fix PR with base `release/sdk-1.4.x` (branch name e.g. `fix/sdk-1.4-crash`); review and squash-merge it as usual.
+3. Release Please opens the release PR on that branch (`chore(release): sdk 1.4.2`, head `release-please--branches--release/sdk-1.4.x--components--sdk`). Merging it tags `sdk-1.4.2` on the maintenance branch and starts publishing like on `main`.
+   A push runs the workflow file of the pushed branch. A branch cut from a tag older than this feature has the old `release-please.yml` (main only), so after each merge on such a branch run Actions → **Release Please** on `main` with `branch` = `release/sdk-1.4.x`.
+4. The publisher sees that the source commit is on `release/sdk-1.4.x`, not `main`, and publishes to the public branch `release/1.4.x`: the bot creates it once at public tag `1.4.1` (the latest 1.4.* tag), then opens the publish PR `chore(release): 1.4.2` against it. Review and merge it.
+5. Run **Tag & Release Packages**. It tags `1.4.2` on the merge commit on `release/1.4.x` and creates the Release with "Latest" off while a higher version (1.5.0) exists. Public `main` does not change.
+6. Forward-port the fix to `main` with a normal PR (cherry-pick); never merge the maintenance branch into `main`.
+
+Notes:
+- The `CHANGELOG.md` on `main` does not list 1.4.2; it lives on the maintenance branch and in the public 1.4.2 Release.
+- Abandon (before or after the publish PR merge) works the same; the revert PR targets `release/1.4.x`.
+- An integration maintenance version still waits as `awaiting_dependency` until its `sdkMinimum` SDK tag is public.
+- Admin, once per repository: give `release/*` in the monorepo and `release/*` in each public repository the same ruleset as `main` (PR review, no force push, no deletion), keeping the bot able to create the branch. Whether a "require pull request" ruleset blocks the bot's branch creation is not verified; if it does, add the branch to the ruleset right after the workflow created it.
+
 ### Public activity notifications
 
 The **Public Activity** workflow runs daily at 09:00 IST (03:30 UTC) and can be started at any time with Actions → Public Activity → Run workflow. It looks at the public package repositories and opens an issue in this monorepo for new outside activity, labelled `pkg:<key>` for the package and `public-issue` (a public issue), `public-pr` (a public pull request) or `sync-back-needed` (a merged public change that this monorepo does not have yet). Triage those issues like any other: answer on the public repository, and close the monorepo issue when done.

@@ -55,6 +55,15 @@ class ModeledGitHubTests(unittest.TestCase):
         self.assertEqual(json.loads(self.gh('api', f'repos/{REPOSITORY}/pulls/1'))['body'], 'Body\n')
         self.assertEqual(json.loads(self.gh('api', '--paginate', '--slurp', f'repos/{REPOSITORY}/releases')), [[]])
 
+    def test_release_records_the_latest_choice(self):
+        remote = self.root / 'remotes/experimental-integration-swift-sprig.git'
+        for version, extra in (('0.2.0', []), ('0.1.9', ['--latest=false'])):
+            git(remote, 'tag', version, self.head)
+            self.gh('release', 'create', version, '--repo', REPOSITORY, '--verify-tag', '--title', version,
+                    '--notes-file', str(self.root / 'body.md'), *extra)
+        releases = load(self.root / 'github/state.json')['releases'][REPOSITORY]
+        self.assertEqual([(r['tag_name'], r['make_latest']) for r in releases], [('0.2.0', 'default'), ('0.1.9', 'false')])
+
     def test_unmodeled_calls_and_unknown_repositories_fail(self):
         for args in (['api', 'user'], ['auth', 'status'], ['repo', 'view', 'rudderlabs/production-repo'],
                      ['release', 'create', '0.1.0', '--repo', REPOSITORY, '--verify-tag', '--title', 'T',
