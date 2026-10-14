@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.5](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-firebase-1.1.4...integration-firebase-1.1.5) (2026-10-14)
+
+
+### Bug Fixes
+
+* **firebase:** prefix the reset log ([#46](https://github.com/rudderlabs/experimental-swift-monorepo/issues/46)) ([924a868](https://github.com/rudderlabs/experimental-swift-monorepo/commit/924a868ce46824a0694bfb72bc2dd44f13c59033))
+
 ## [1.1.4](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-firebase-1.1.3...integration-firebase-1.1.4) (2026-10-14)
 
 
