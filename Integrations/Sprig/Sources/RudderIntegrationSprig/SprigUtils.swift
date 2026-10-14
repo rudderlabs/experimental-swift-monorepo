@@ -38,7 +38,7 @@ enum SprigUtils {
         }
         let normalizedKey = normalizeKeyLength(key)
         guard isSupportedValue(value) else {
-            LoggerAnalytics.warn("SprigIntegration: '\(value)' is not a valid property value. Only String, Bool, Double and Int are accepted. Ignoring property.")
+            LoggerAnalytics.warn("SprigIntegration: '\(key)' has an unsupported value type. Only String, Bool, Double and Int are accepted. Ignoring property.")
             return
         }
         adapter.setVisitorAttribute(key: normalizedKey, value: value)
