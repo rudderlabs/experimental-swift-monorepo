@@ -1,5 +1,5 @@
 {
-  "Packages/RudderStackAnalytics": "1.4.2",
+  "Packages/RudderStackAnalytics": "1.4.3",
   "Integrations/Sprig": "1.0.1",
   "Integrations/Firebase": "1.1.3"
 }
