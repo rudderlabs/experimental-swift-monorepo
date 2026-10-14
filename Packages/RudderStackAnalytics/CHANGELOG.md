@@ -23,6 +23,13 @@
 
 
 
+## [1.4.3](https://github.com/rudderlabs/experimental-swift-monorepo/compare/sdk-1.4.2...sdk-1.4.3) (2026-10-14)
+
+
+### Bug Fixes
+
+* **sdk:** clarify destination error messages ([#48](https://github.com/rudderlabs/experimental-swift-monorepo/issues/48)) ([3a556c8](https://github.com/rudderlabs/experimental-swift-monorepo/commit/3a556c8d3b1173f8f3649fd8bf8bf4c7d6cedf96))
+
 ## [1.4.2](https://github.com/rudderlabs/experimental-swift-monorepo/compare/sdk-1.4.1...sdk-1.4.2) (2026-10-14)
 
 
