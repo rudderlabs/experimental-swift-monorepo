@@ -71,27 +71,8 @@
           "type": "generic",
           "path": "Sources/RudderStackAnalytics/Version.swift"
         }
-      ]
-    },
-    "Integrations/Sprig": {
-      "component": "integration-sprig",
-      "package-name": "RudderIntegrationSprig",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "Sources/RudderIntegrationSprig/Version.swift"
-        }
-      ]
-    },
-    "Integrations/Firebase": {
-      "component": "integration-firebase",
-      "package-name": "RudderIntegrationFirebase",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "Sources/RudderIntegrationFirebase/Version.swift"
-        }
-      ]
+      ],
+      "versioning": "always-bump-patch"
     }
   }
 }
