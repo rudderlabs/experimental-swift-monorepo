@@ -158,7 +158,7 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
     public func reset() {
         // Clear Firebase user ID
         self.analyticsAdapter.setUserID(nil)
-        LoggerAnalytics.debug("Reset: Firebase Analytics setUserID:nil")
+        LoggerAnalytics.debug("FirebaseIntegration: Reset Firebase Analytics user ID")
     }
 }
 
