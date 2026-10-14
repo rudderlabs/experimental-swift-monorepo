@@ -19,11 +19,11 @@ enum DestinationError: Error {
     var errorDescription: String {
         switch self {
         case .destinationNotReady(let destination):
-            return "Destination \(destination) is absent or disabled in dashboard."
+            return "Destination \(destination) is absent or disabled in the dashboard."
         case .destinationNotFound(let destination):
             return "Destination \(destination) not found in the source config. No events will be sent to this destination."
         case .destinationDisabled(let destination):
-            return "Destination \(destination) is disabled in dashboard. No events will be sent to this destination."
+            return "Destination \(destination) is disabled in the dashboard. No events will be sent to this destination."
         case .destinationConsentDenied(let destination):
             return "Destination \(destination) is denied by user consent. No events will be sent to this destination."
         }
