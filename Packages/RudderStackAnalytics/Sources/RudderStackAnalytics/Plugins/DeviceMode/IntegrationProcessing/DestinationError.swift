@@ -8,7 +8,7 @@
 import Foundation
 
 /**
- Represents an `Error` which occurs when the destination present in an integration fails to initialise or update using the source configuration.
+ Represents an `Error` which occurs when the destination present in an integration fails to initialize or update using the source configuration.
  */
 enum DestinationError: Error {
     case destinationNotReady(String)
