@@ -23,6 +23,13 @@
 
 
 
+## [1.4.2](https://github.com/rudderlabs/experimental-swift-monorepo/compare/sdk-1.4.1...sdk-1.4.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **sdk:** correct the spelling of initialize in DestinationError docs ([#36](https://github.com/rudderlabs/experimental-swift-monorepo/issues/36)) ([f0b369c](https://github.com/rudderlabs/experimental-swift-monorepo/commit/f0b369c1aa2bcf2a14b217979c811b804581eb59))
+
 ## [1.4.1](https://github.com/rudderlabs/experimental-swift-monorepo/compare/sdk-1.4.0...sdk-1.4.1) (2026-10-12)
 
 
