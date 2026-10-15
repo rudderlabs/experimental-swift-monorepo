@@ -1,10 +1,11 @@
 name: PR Title Validation
-# The squash commit on main is the PR title (D23), so the title must be a Conventional Commit (MEMORY §12).
+# The squash commit on main or a release/<key>-X.Y.x branch is the PR title (D23), so the title must be a
+# Conventional Commit (MEMORY §12).
 # Separate from ci.yml so a title edit re-runs only these jobs. `pr-title` is a required check;
 # `scope-hint` only warns (D16). Same action and pin as rudder-sdk-swift's pr-title-validation.yml.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'release/*-*.*.x']
     types: [opened, reopened, edited, synchronize]
 permissions:
   contents: read

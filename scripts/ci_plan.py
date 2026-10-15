@@ -1,4 +1,4 @@
-"""PR CI plan (D34): which packages to test and export, and whether the policy job runs, as JSON.
+"""CI plan (D34): which packages to test and export, and whether the policy job runs, as JSON.
 
 ci.yml's `packages` job, the pre-push hook and `make affected` call this file. It is separate from package_ci.py (the
 package jobs) so that a change to the plan alone runs only the Python tests. package_ci.py must not import it.
@@ -71,12 +71,13 @@ def changed_entries(root=ROOT, base_ref="HEAD"):
     return {k for k in old.keys() | new.keys() if old.get(k) != new.get(k)}
 
 
-def ci_plan(paths, root=ROOT, base_ref="HEAD"):
-    """Packages to test and export and whether the policy job runs; `paths=None` (push to main) checks everything.
+def ci_plan(paths, root=ROOT, base_ref="HEAD", with_dependents=True):
+    """Packages to test and export and whether the policy job runs; `paths=None` checks everything.
 
     Shared build inputs select every package, LICENSE and release templates every export, docs nothing. Other paths
-    select their package (release_plan.affected), and tests also cover the packages that depend on it. A
-    release/packages.json change selects the packages whose entry changed (changed_entries), the same way.
+    select their package (release_plan.affected), and tests also cover the packages that depend on it unless
+    `with_dependents` is false (the pre-push hook). A release/packages.json change selects the packages whose entry
+    changed (changed_entries), the same way.
     """
     packages = inventory(root)
     every = list(packages)
@@ -90,7 +91,7 @@ def ci_plan(paths, root=ROOT, base_ref="HEAD"):
     code = [p for p in paths if p != INVENTORY and not matches(p, EXPORT) and not p.endswith(".md")
             and not p.startswith("docs/")]
     direct = (affected(code, root, base_ref) if code else []) + [k for k in every if k in entries]
-    test = dependents(direct, packages)
+    test = dependents(direct, packages) if with_dependents else set(direct)
     export = every if any(matches(p, EXPORT) for p in paths) else direct
     return {"test": [k for k in every if k in test], "export": [k for k in every if k in export], "policy": policy}
 
@@ -104,20 +105,41 @@ def changed(base, root=ROOT):
     return git(root, "diff", "--name-only", base_commit(base, root), "HEAD").splitlines()
 
 
+def push_plan(before, root=ROOT):
+    """Push plan: what changed since `before` (the branch's previous commit), or everything when `before` is unknown:
+    all zeros (a new branch), empty, or missing from the checkout (a force push)."""
+    try:
+        base = base_commit(before, root)
+    except RuntimeError:
+        return ci_plan(None, root)
+    return ci_plan(changed(base, root), root, base)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--base", help="PR base: check what this branch changes since it left BASE")
-    group.add_argument("--all", action="store_true", help="push to main: check everything")
+    group.add_argument("--before", help="push: check what changed since BEFORE, or everything when it is unknown")
+    group.add_argument("--all", action="store_true", help="check everything")
     parser.add_argument("--affected", action="store_true",
                         help="with --base: print only the packages the branch changes (make affected)")
+    parser.add_argument("--no-dependents", action="store_true",
+                        help="with --base: test the changed packages but not their dependents (pre-push hook)")
     args = parser.parse_args(argv)
+    if args.no_dependents and args.base is None:
+        parser.error("--no-dependents needs --base")
     if args.affected:
-        if args.all:
+        if args.base is None:
             parser.error("--affected needs --base")
         print(json.dumps(affected(changed(args.base), base_ref=base_commit(args.base))))
         return 0
-    plan = ci_plan(None) if args.all else ci_plan(changed(args.base), base_ref=base_commit(args.base))
+    if args.all:
+        plan = ci_plan(None)
+    elif args.before is not None:
+        plan = push_plan(args.before)
+    else:
+        plan = ci_plan(changed(args.base), base_ref=base_commit(args.base),
+                       with_dependents=not args.no_dependents)
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
             for name, value in plan.items():

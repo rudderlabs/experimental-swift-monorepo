@@ -104,9 +104,10 @@ class BranchNameTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("Invalid branch name: 'bad-name'", result.stdout)
             (hooks / "pre-push").write_text("#!/bin/bash\necho blocked by gitleaks\nexit 3\n")
-            result = self.push("fix/x", env={"GIT_CONFIG_GLOBAL": str(config)})
-            self.assertEqual(result.returncode, 3)
-            self.assertNotIn("Running pre-push checks", result.stdout)
+            for skip in ["", "1"]:  # SKIP_PRE_PUSH_TESTS never skips the global hooks
+                result = self.push("fix/x", env={"GIT_CONFIG_GLOBAL": str(config), "SKIP_PRE_PUSH_TESTS": skip})
+                self.assertEqual(result.returncode, 3)
+                self.assertNotIn("Running pre-push checks", result.stdout)
 
 
 def fixture_monorepo(root):
@@ -126,7 +127,7 @@ def fixture_monorepo(root):
 
 
 class PrePushTestPlanTests(unittest.TestCase):
-    """The pre-push test step runs only what CI's plan selects; a stub `make` records the calls."""
+    """The pre-push test step runs CI's plan without dependents; a stub `make` records the calls."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -163,13 +164,24 @@ class PrePushTestPlanTests(unittest.TestCase):
         self.assertEqual(calls, ["test PKG=sprig"])
         self.assertIn("testing: sprig", result.stdout)
 
-    def test_sdk_change_also_tests_its_dependents(self):
+    def test_sdk_change_tests_only_the_sdk_and_leaves_its_dependents_to_ci(self):
         self.change("Packages/DemoSDK/Sources/DemoSDK/Added.swift")
         result, calls = self.push()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("test PKG=sdk", calls)
-        self.assertIn("test PKG=sprig", calls)
-        self.assertNotIn("test-python", calls)
+        self.assertEqual(calls, ["test PKG=sdk"])
+        self.assertIn("testing: sdk (CI also tests any packages that depend on them)", result.stdout)
+
+    def test_skip_switch_skips_only_the_tests(self):
+        self.change("Packages/DemoSDK/Sources/DemoSDK/Added.swift")
+        result, calls = self.push(env={"SKIP_PRE_PUSH_TESTS": "1"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, [])
+        self.assertIn("Branch name validation passed", result.stdout)
+        self.assertIn("skipping tests — CI will run them", result.stdout)
+        result, calls = self.push("my-branch", env={"SKIP_PRE_PUSH_TESTS": "1"})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Invalid branch name", result.stdout)
+        self.assertEqual(calls, [])
 
     def test_docs_change_runs_no_tests(self):
         self.change("Integrations/Sprig/README.md")
