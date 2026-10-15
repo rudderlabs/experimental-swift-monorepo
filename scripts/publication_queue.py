@@ -8,7 +8,7 @@ from common import ROOT, OWNER, RELEASE_BRANCH, SDK, SOURCE_NAME, git, inventory
 from maintenance_branch import public_base, semver, source_line
 from project import SEMVER
 from publish import verify_tree
-from reviewed_publication import abandon_state, find_pr
+from reviewed_publication import abandon_state, discarded, find_pr, find_prs
 
 FAILURES = (ValueError, RuntimeError, OSError, KeyError)
 
@@ -33,6 +33,10 @@ def state(repo, key, version, sha, public_releases, base=RELEASE_BRANCH):
     pr = find_pr(key, version)
     if pr and pr['state'] == 'open':
         return 'awaiting_review'
+    # Discarded from this source commit, before Abandon Unpublished Version deleted its monorepo Release. A
+    # discarded PR of an earlier source commit is history: the version number was released again.
+    if not pr and any(sha in (p['body'] or '') for p in find_prs(key, version) if discarded(p)):
+        return 'abandoned'
     # A discarded version is reported and never tagged; later versions still publish.
     return abandon_state(key, version, pr, base) or 'pending'
 

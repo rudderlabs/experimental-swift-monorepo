@@ -185,6 +185,8 @@ def github(args):
             output = view(repository, next(p for p in state['pulls'][repository] if p['number'] == int(resource[1])))
         elif resource == ['releases']:
             output = state['releases'].get(repository, [])
+        elif resource[:1] == ['issues'] and resource[2:] == ['comments']:
+            output = []  # the rehearsal never discards a version
         else:
             raise ValueError('Unmodeled gh api endpoint: ' + args[-1])
         output = [output] if '--slurp' in args else output

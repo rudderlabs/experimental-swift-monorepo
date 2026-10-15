@@ -80,7 +80,7 @@ It does not push a consumer upgrade commit. A persistent example-app upgrade rem
 
 Every export adds a generated CONTRIBUTING.md, `.github/CODEOWNERS` (`* @rudderlabs/sdk_team`) and a README block (`release/templates/`) that welcome issues and pull requests in the public repository; maintainers carry merged public PRs back to this monorepo ([Sync back an outside PR](#sync-back-an-outside-pr)). All are hashed in provenance; `copiedFiles` records a `transform` per file (`copy`, `vendored-strip-import`, `generated`) for reverse sync.
 
-`anchor-package.yml` (manual: package, version, full `main` SHA) validates the package against the allowlist and package list, the SemVer version against `version.txt` at that commit, and the SHA on `main`, then creates the plain tag `<component>-<version>`. It also re-anchors a renamed component at its last release commit ([Core SDK key rename](#core-sdk-key-rename-sdk--swift-sdk-once-around-the-merge)). It creates no GitHub Release, so the completion queue never sees it, and no workflow starts on a tag.
+**Set Current Release Version** (`anchor-package.yml`; manual: package, version, full `main` SHA) validates the package against the allowlist and package list, the SemVer version against `version.txt` at that commit, and the SHA on `main`, then creates the plain tag `<component>-<version>`. It also re-anchors a renamed component at its last release commit ([Core SDK key rename](#core-sdk-key-rename-sdk--swift-sdk-once-around-the-merge)). It creates no GitHub Release, so the completion queue never sees it, and no workflow starts on a tag.
 
 ## Maintainer how-tos
 
@@ -137,7 +137,7 @@ Example: customers are on SDK 1.4.x and `main` has released 1.5.0. Ship a fix as
 
 Notes:
 - The `CHANGELOG.md` on `main` does not list 1.4.2; it lives on the maintenance branch and in the public 1.4.2 Release.
-- Abandon (before or after the publish PR merge) works the same; the revert PR targets `release/1.4.x`.
+- Abandon Unpublished Version works the same: a public revert PR targets `release/1.4.x`, and the rollback PR targets `release/swift-sdk-1.4.x`.
 - An integration maintenance version still waits as `awaiting_dependency` until its `sdkMinimum` SDK tag is public.
 - Admin, once per repository: give `release/*` in the monorepo and `release/*` in each public repository the same ruleset as `main` (PR review, no force push, no deletion), keeping the bot able to create the branch. In the monorepo, the `release-lines` ruleset (pattern `release/*-*.*.x`) also requires the `ci-ok` and `pr-title` checks, like `main`. Whether a "require pull request" ruleset blocks the bot's branch creation is not verified; if it does, add the branch to the ruleset right after the workflow created it.
 
@@ -149,7 +149,7 @@ Release Please finds a package's last release as the GitHub Release or tag `<com
 
 1. Before merging the rename PR, set the repository variable `EXPERIMENTAL_RELEASES_ENABLED` to `false` (Settings → Secrets and variables → Actions → Variables), so the merge push opens no SDK release PR before the anchor exists.
 2. Merge the rename PR.
-3. Run Actions → **Anchor Imported Package** on `main` with `package` = `swift-sdk`, `version` = `1.5.0`, `sha` = `0433816ec91370fbc9e59b59fefa83e3de40829d` (the commit of `sdk-1.5.0`; check with `git rev-parse 'sdk-1.5.0^{commit}'`). It creates the plain tag `swift-sdk-1.5.0` on that commit and no GitHub Release, so nothing is queued or published.
+3. Run Actions → **Set Current Release Version** on `main` with `package` = `swift-sdk`, `version` = `1.5.0`, `sha` = `0433816ec91370fbc9e59b59fefa83e3de40829d` (the commit of `sdk-1.5.0`; check with `git rev-parse 'sdk-1.5.0^{commit}'`). It creates the plain tag `swift-sdk-1.5.0` on that commit and no GitHub Release, so nothing is queued or published.
 4. Set `EXPERIMENTAL_RELEASES_ENABLED` back to `true` and run Actions → **Release Please** on `main` with `branch` empty. It finds `swift-sdk-1.5.0` and opens no SDK PR, because no SDK change is newer.
 5. The next SDK fix (`fix(swift-sdk): …`, changing `Packages/RudderStackAnalytics/`) opens `chore(release): swift-sdk 1.5.1` on `release-please--branches--main--components--swift-sdk`, with only that change in the CHANGELOG and the compare link `swift-sdk-1.5.0...swift-sdk-1.5.1`. Merging it tags `swift-sdk-1.5.1` and publishes the public `1.5.1` as usual (publish PR `publication/swift-sdk/1.5.1`, then Tag & Release Packages).
 
@@ -168,12 +168,22 @@ After a public pull request is merged, bring the change into this monorepo, the 
 
 ### Discard an unpublished version
 
-- Before the publication PR is merged: add the label `abandon` to the public publish PR and close it (`gh pr edit <number> --repo <repo> --add-label abandon`, then `gh pr close <number> --repo <repo>`). No tag or Release exists for that version.
-- After the publication PR is merged but before the tag exists: run Actions → **Abandon Unpublished Version** with `package` and `version`. It opens a bot revert PR on the public repository; review and merge it, and public `main` is back to the last published version.
-- Either way, Tag & Release Packages reports the version as `abandoned` and never tags it. The monorepo tag stays; the next Release Please version publishes normally and skips that number.
-- Closing a publication PR without the `abandon` label still stops Tag & Release on purpose (review required).
-- Once a version is tagged, customers may have it: roll forward instead (see above).
-- Each public repository needs the `abandon` label once: `gh label create abandon --repo <repo> --description "Discard this unpublished version"`.
+Run Actions → **Abandon Unpublished Version** on `main` with `package` (from the list) and `version` (e.g. `1.1.6`). It is the one way, whatever state the version is in, and the next release of the package gets the same number again (Firebase 1.1.6 discarded → the next Firebase release is 1.1.6, and its notes include the discarded changes).
+
+1. It checks first and changes nothing if any check fails: the version has no public tag (a tagged version is refused: customers may have it, roll forward instead, see above); the monorepo tag `<component>-X.Y.Z` exists; it is the latest release of the package on its line (`.release-please-manifest.json` says `X.Y.Z`); and its release commit changes only the release files (manifest, `CHANGELOG.md`, `version.txt`, `Version.swift`).
+2. Public side, by the state of the publish PR `publication/<package>/X.Y.Z`:
+   - none (publication failed or waits for a dependency or takeover): nothing to do;
+   - open: the bot comments "Discarded by Abandon Unpublished Version (run link)" and closes it;
+   - closed without merging: the bot adds the same comment;
+   - merged: the bot opens a revert PR on the public base. Merge it, then run the workflow again (two runs); the second run comments on both PRs and continues.
+   The public branch `publication/<package>/X.Y.Z` is deleted, so the reused number starts fresh.
+3. Monorepo side, on the version's line (`main`, or `release/<package>-X.Y.x`): the bot opens the rollback PR `revert(<package>): discard unpublished <component> X.Y.Z` (branch `discard/<package>/X.Y.Z`) that puts the release files back, adds a commit override to the old release PR so the next changelog skips it, and deletes the monorepo Release and tag `<component>-X.Y.Z` last.
+4. **Merge the rollback PR next.** Release Please then proposes `X.Y.Z` again with the discarded changes. Until it is merged, Release Please may briefly show a wrong release PR; ignore it.
+
+Notes:
+- Re-running is safe: every step checks first; once done it reports "already discarded; nothing to do".
+- Closing a publish PR by hand still stops Tag & Release Packages (review required) until this workflow runs for it.
+- One-time manual cleanups for the earlier `abandon` label (no longer used): delete the label on the public Firebase repository (`gh label delete abandon --repo rudderlabs/experimental-integration-swift-firebase --yes`), and delete the leftover monorepo Release and tag of the version discarded that way (otherwise Tag & Release Packages now stops on its closed publish PR #4): `gh release delete integration-firebase-1.1.4 --repo rudderlabs/experimental-swift-monorepo --cleanup-tag --yes`.
 
 ## Existing Sprig trial
 

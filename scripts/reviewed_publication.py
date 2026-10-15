@@ -1,5 +1,4 @@
 """Publish through reviewed GitHub PRs. Never write a publication base branch (main or release/X.Y.x)."""
-import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -7,7 +6,7 @@ import re
 import shutil
 import tempfile
 
-from common import OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, git, load, run, swift_options, text, url
+from common import OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, git, load, run, swift_options, text
 import release_notes
 
 BOT = 'rudderstack-github-actions[bot]'
@@ -15,7 +14,8 @@ BOT_EMAIL = re.compile(r'[1-9][0-9]*\+' + re.escape(BOT) + r'@users\.noreply\.gi
 MODES = ('normal', 'takeover', 'bootstrap')
 README_ONLY = re.compile(r'(?:README|LICENSE)[^/]*\Z|\.gitignore\Z', re.I)
 WORKFLOWS = 'Remove .github/workflows by PR first'
-ABANDON = 'abandon'  # label on a closed publication PR; also the revert PR branch prefix
+ABANDON = 'abandon'  # the revert PR branch prefix
+DISCARDED = '<!-- discarded -->'  # the bot's comment marker: a discarded version's PR is history
 ROLL_FORWARD = '{version} is already public and is never discarded; roll forward with a new release instead'
 
 
@@ -45,16 +45,50 @@ def layout(repo):
     return 'readme-only' if readme and all(README_ONLY.match(f) for f in files) else 'foreign'
 
 
-def find_pr(key, version, mode='normal'):
+def find_prs(key, version, mode='normal'):
+    """Every PR of the version branch, discarded ones included, oldest first."""
     branch = branch_for(key, version, mode)
     repository = repository_for(key)
-    # Any base: the version branch is unique, and validate_pr checks the base.
+    # Any base: validate_pr checks the base.
     pages = json.loads(run(['gh', 'api', '--paginate', '--slurp',
                            f'repos/{repository}/pulls?state=all&head={OWNER}:{branch}&per_page=100']))
-    prs = [p for page in pages for p in page]
+    return [api(f'repos/{repository}/pulls/{n}') for n in sorted(p['number'] for page in pages for p in page)]
+
+
+def find_pr(key, version, mode='normal'):
+    """The version's live PR or None. A discarded PR is history: a reused version number opens a new one."""
+    prs = [p for p in find_prs(key, version, mode) if not discarded(p)]
     if len(prs) > 1:
         raise ValueError('Multiple publication PRs match the version')
-    return api(f'repos/{repository}/pulls/{prs[0]["number"]}') if prs else None
+    return prs[0] if prs else None
+
+
+def marked(pr):
+    """The bot commented the discard marker on its own PR."""
+    if pr['user']['login'] != BOT:
+        return False
+    pages = json.loads(run(['gh', 'api', '--paginate', '--slurp',
+                           f'repos/{pr["base"]["repo"]["full_name"]}/issues/{pr["number"]}/comments?per_page=100']))
+    return any(c['user']['login'] == BOT and DISCARDED in (c['body'] or '') for page in pages for c in page)
+
+
+def discarded(pr):
+    return pr['state'] == 'closed' and marked(pr)
+
+
+def mark_discarded(pr, run_url):
+    """Comment the marker once, then close the PR if it is open."""
+    repository, number = pr['base']['repo']['full_name'], str(pr['number'])
+    if not marked(pr):
+        run(['gh', 'pr', 'comment', number, '--repo', repository, '--body', text('discardedComment', run=run_url)])
+    if pr['state'] == 'open':
+        run(['gh', 'pr', 'close', number, '--repo', repository])
+
+
+def delete_branch(repo, branch):
+    """Delete a public PR branch: reviewed_commit and abandon reuse a pushed branch of the same name."""
+    if git(repo, 'ls-remote', '--heads', 'origin', f'refs/heads/{branch}'):
+        git(repo, 'push', 'origin', f':refs/heads/{branch}')
 
 
 def validate_pr(pr, key, version, mode='normal', base=RELEASE_BRANCH):
@@ -70,13 +104,14 @@ def validate_pr(pr, key, version, mode='normal', base=RELEASE_BRANCH):
 def abandon_state(key, version, pr, base=RELEASE_BRANCH):
     """Derived from GitHub only: `abandoned`, `abandoning` (revert PR open) or None (publishable).
 
-    A closed unmerged PR with label `abandon` discards a version before merge; a merged bot revert PR after.
+    A closed unmerged PR is abandoned only with the bot's discard marker (a person's close still needs review);
+    a merged one once its bot revert PR is merged.
     """
     if not pr or pr['state'] != 'closed':
         return None
     validate_pr(pr, key, version, base=base)
     if not pr['merged']:
-        return 'abandoned' if any(label['name'] == ABANDON for label in pr.get('labels') or []) else None
+        return 'abandoned' if discarded(pr) else None
     revert = find_pr(key, version, ABANDON)
     if not revert:
         return None
@@ -156,7 +191,7 @@ def reviewed_commit(key, version, source, repo, stage, prepare, verify_tree, mod
             raise Abandoned(f'{version} is {status}; it is never tagged')
         if pr['state'] == 'closed' and not pr['merged']:
             raise ValueError('Publication PR was closed without merging; review required '
-                             f'(label it {ABANDON} to discard the version)')
+                             '(run Abandon Unpublished Version to discard the version)')
         sha = pr['merge_commit_sha'] if pr['merged'] else pr['head']['sha']
         if not re.fullmatch('[0-9a-f]{40}', sha or ''):
             raise ValueError('Publication PR commit is missing')
@@ -234,7 +269,7 @@ def abandon(key, version, repo, verify_tree, base=RELEASE_BRANCH):
     if status:
         return status, find_pr(key, version, ABANDON) or pr
     if not pr['merged']:
-        raise ValueError(f'Publication PR is not merged; close it with label {ABANDON} instead')
+        raise ValueError('Publication PR is not merged; nothing to revert')
     branch = branch_for(key, version, ABANDON)
     if find_pr(key, version, ABANDON):
         raise ValueError(f'Abandon PR was closed without merging; delete branch {branch} to request it again')
@@ -271,26 +306,3 @@ def abandon(key, version, repo, verify_tree, base=RELEASE_BRANCH):
     if revert['head']['sha'] != git(repo, 'rev-parse', 'HEAD'):
         raise ValueError('Created abandon PR head differs')
     return 'awaiting_review', revert
-
-
-if __name__ == '__main__':
-    from common import ROOT
-    from maintenance_branch import publication_base
-    from project import SEMVER
-    from publish import verify_tree
-    parser = argparse.ArgumentParser(description='Discard a merged publication that has no public tag yet.')
-    parser.add_argument('package', choices=list(allowlist()))
-    parser.add_argument('version')
-    args = parser.parse_args()
-    if not SEMVER.fullmatch(args.version):
-        raise SystemExit('::error::Version must be X.Y.Z')
-    with tempfile.TemporaryDirectory(prefix='abandon-') as temp:
-        clone = Path(temp) / 'publication'
-        run(['git', 'clone', '--no-checkout', url(args.package), clone])
-        try:
-            # The base follows where the version's monorepo tag lives: main or release/<key>-X.Y.x.
-            result, found = abandon(args.package, args.version, clone, verify_tree,
-                                    publication_base(ROOT, args.package, args.version))
-        except ValueError as error:
-            raise SystemExit(f'::error::{error}')
-    print(f'::notice::{args.package} {args.version}: {result} {found["html_url"]}')

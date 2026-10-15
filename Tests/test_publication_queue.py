@@ -15,6 +15,7 @@ from unittest.mock import call, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from common import ROOT
 from publication_queue import queue
+import reviewed_publication
 from reviewed_publication import BOT
 import json
 
@@ -58,15 +59,19 @@ class PublicationQueueTests(unittest.TestCase):
                 # Only Sprig has a public tag; Firebase is a fresh pending release.
                 return 'refs/tags/0.1.1' if published and 'sprig' in str(self.clones[-1]) else ''
             return ''
-        def pr(key, version, mode='normal'):
+        def branch_prs(key, version, mode='normal'):
+            # Every PR of the version branch; a list also holds discarded (history) PRs.
             if prs is not None:
-                return prs.get((key, version, mode))
-            return {'state': 'open'} if open_pr and key == 'sprig' else None
+                found = prs.get((key, version, mode))
+                return found if isinstance(found, list) else [found] if found else []
+            return [{'state': 'open'}] if open_pr and key == 'sprig' else []
         with patch('publication_queue.run', side_effect=command), \
              patch('publication_queue.git', side_effect=git_command), \
              patch('publication_queue.source_line', side_effect=line), \
-             patch('publication_queue.find_pr', side_effect=pr) as find_pr, \
-             patch('reviewed_publication.find_pr', side_effect=pr), \
+             patch('publication_queue.find_pr', wraps=reviewed_publication.find_pr) as find_pr, \
+             patch('reviewed_publication.find_prs', side_effect=branch_prs), \
+             patch('publication_queue.find_prs', side_effect=branch_prs), \
+             patch('reviewed_publication.marked', side_effect=lambda pr: pr.get('marked', False)), \
              patch('publication_queue.verify_tree', return_value={
                  'sourceCommit': 'c' * 40 if wrong_source else sha, 'package': 'sprig', 'version': '0.1.1'}):
             pending, self.skipped = queue(FIXTURE)
@@ -102,23 +107,28 @@ class PublicationQueueTests(unittest.TestCase):
                                          'status': 'awaiting_review'}])
         self.assertIn(call('sprig', '0.1.1'), self.find_pr)
 
-    def bot_pr(self, version, state='closed', merged=False, labels=(), prefix='publication', base='main'):
+    def bot_pr(self, version, state='closed', merged=False, marked=False, prefix='publication', base='main',
+               source='a' * 40):
+        # `marked`: the bot's discard comment (Abandon Unpublished Version); the body names the source commit.
         repository = {'full_name': 'rudderlabs/experimental-integration-swift-sprig'}
-        return {'state': state, 'merged': merged, 'labels': [{'name': n} for n in labels],
-                'user': {'login': BOT}, 'base': {'ref': base, 'repo': repository},
+        return {'state': state, 'merged': merged, 'marked': marked, 'labels': [{'name': 'abandon'}],
+                'body': f'Generated from monorepo commit `{source}`', 'user': {'login': BOT},
+                'base': {'ref': base, 'repo': repository},
                 'head': {'ref': f'{prefix}/sprig/{version}', 'repo': repository}}
 
     def test_main_and_maintenance_versions_queue_together_each_on_its_base(self):
         lines = {'0.1.1': 'main', '0.2.0': 'main', '0.1.2': 'release/sprig-0.1.x', '0.1.3': 'release/sprig-0.1.x',
                  '0.1.9': ValueError('Source commit is on neither main nor release/sprig-0.1.x')}
-        # 0.1.2 was discarded on the public release/0.1.x: found only when its PR is checked against that base.
-        prs = {('sprig', '0.1.2', 'normal'): self.bot_pr('0.1.2', labels=['abandon'], base='release/0.1.x'),
+        # 0.1.2 was merged on the public release/0.1.x and its revert PR is open: found only against that base.
+        prs = {('sprig', '0.1.2', 'normal'): self.bot_pr('0.1.2', merged=True, base='release/0.1.x'),
+               ('sprig', '0.1.2', 'abandon'): self.bot_pr('0.1.2', state='open', prefix='abandon',
+                                                          base='release/0.1.x'),
                ('sprig', '0.1.3', 'normal'): self.bot_pr('0.1.3', state='open', base='release/0.1.x')}
         pending = self.run_queue(prs=prs, lines=lines)
         self.assertEqual([i['version'] for i in pending], ['0.1.1', '0.2.0'])
         self.assertEqual(pending[1], {'package': 'sprig', 'version': '0.2.0', 'source_sha': 'a' * 40})
         self.assertEqual({s['version']: s['status'] for s in self.skipped},
-                         {'0.1.9': 'incomplete', '0.1.2': 'abandoned', '0.1.3': 'awaiting_review'})
+                         {'0.1.9': 'incomplete', '0.1.2': 'abandoning', '0.1.3': 'awaiting_review'})
         self.assertIn('neither main nor release/sprig-0.1.x', self.skipped[0]['error'])
         # A pending maintenance version is queued like any other, in version order with the main line.
         del prs[('sprig', '0.1.3', 'normal')]
@@ -131,18 +141,32 @@ class PublicationQueueTests(unittest.TestCase):
     def test_abandoned_version_is_reported_and_a_later_version_proceeds(self):
         later = {'package': 'sprig', 'version': '0.1.2', 'source_sha': 'a' * 40}
         merged = self.bot_pr('0.1.1', merged=True)
-        for name, prs in (('closed with label', {('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1', labels=['abandon'])}),
+        # Until Abandon Unpublished Version deletes the monorepo Release, the version is still in the queue.
+        for name, prs in (('closed and marked', {('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1', marked=True)}),
                           ('merged then reverted', {('sprig', '0.1.1', 'normal'): merged,
                                                     ('sprig', '0.1.1', 'abandon'): self.bot_pr(
-                                                        '0.1.1', merged=True, prefix='abandon')})):
+                                                        '0.1.1', merged=True, prefix='abandon')}),
+                          ('merged, reverted and marked', {
+                              ('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1', merged=True, marked=True),
+                              ('sprig', '0.1.1', 'abandon'): self.bot_pr('0.1.1', merged=True, marked=True,
+                                                                         prefix='abandon')})):
             with self.subTest(name):
                 self.assertEqual(self.run_queue(prs=prs, later=True), [later])
                 self.assertEqual(self.skipped, [{'package': 'sprig', 'version': '0.1.1', 'source_sha': 'a' * 40,
                                                  'status': 'abandoned'}])
 
-    def test_unlabeled_close_or_pending_revert_is_never_abandoned(self):
-        closed = {('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1', labels=['wontfix'])}
-        # Still pending: Tag & Release Packages stops on it with the review-required error.
+    def test_released_again_after_a_discard_is_pending(self):
+        # 0.1.1 from an earlier source commit was discarded; the number was released again from 'a' * 40.
+        old = self.bot_pr('0.1.1', marked=True, source='c' * 40)
+        self.assertEqual(len(self.run_queue(prs={('sprig', '0.1.1', 'normal'): [old]})), 1)
+        self.assertEqual(self.skipped, [])
+        # Its new publication PR is the live one.
+        self.run_queue(prs={('sprig', '0.1.1', 'normal'): [old, self.bot_pr('0.1.1', state='open')]})
+        self.assertEqual([s['status'] for s in self.skipped], ['awaiting_review'])
+
+    def test_close_without_the_marker_or_pending_revert_is_never_abandoned(self):
+        # A person's close (even with the old `abandon` label): Tag & Release Packages stops, review required.
+        closed = {('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1')}
         self.assertEqual(len(self.run_queue(prs=closed)), 1)
         reverting = {('sprig', '0.1.1', 'normal'): self.bot_pr('0.1.1', merged=True),
                      ('sprig', '0.1.1', 'abandon'): self.bot_pr('0.1.1', state='open', prefix='abandon')}

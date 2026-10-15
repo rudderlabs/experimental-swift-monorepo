@@ -13,5 +13,9 @@
   "pullRequestLine": "* {title} by @{author} in {url}",
   "fullChangelog": "**Full Changelog**: https://github.com/{repository}/compare/{previous}...{version}",
   "releaseFooter": "Source: monorepo commit https://github.com/{repository}/commit/{source}",
-  "releaseTitle": "{version}"
+  "releaseTitle": "{version}",
+  "discardedComment": "<!-- discarded -->\nDiscarded by Abandon Unpublished Version ({run}).",
+  "discardCommit": "revert({key}): discard unpublished {component} {version}\n\nThis reverts commit {sha}.",
+  "discardPullRequestBody": "Rolls back the release commit {sha} of the unpublished {component} {version}, discarded by Abandon Unpublished Version ({run}). Merge this PR next.",
+  "discardOverride": "BEGIN_COMMIT_OVERRIDE\nrevert({key}): discarded release {component} {version}\nEND_COMMIT_OVERRIDE"
 }

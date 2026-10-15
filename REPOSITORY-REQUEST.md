@@ -37,8 +37,10 @@ Do not add these packages to a Swift registry or the Swift Package Index.
 9. Apply review and CI requirements to source `main` after its initial seed, while allowing reviewed PR merges.
    Apply the same to maintenance branches with a `release-lines` ruleset (pattern `release/*-*.*.x`); required checks `ci-ok` and `pr-title`.
 10. Allow the publisher App to create and update publication `main`; verify the approved publisher route under inherited protection.
+    In each publication repository, add a `release/*` ruleset: no deletion, no force push, PR required; the release bot may create branches.
 11. Protect full semantic version tags against update and deletion.
 12. Disable Issues and Discussions in the three generated publication repositories.
+    In the public repositories, set Issues and Pull requests to "Collaborators only".
 13. Keep `EXPERIMENTAL_RELEASES_ENABLED` unset until remote preflight passes.
 14. Keep consumer `EXPERIMENTAL_PACKAGES_AVAILABLE` unset until all baseline tags exist.
 

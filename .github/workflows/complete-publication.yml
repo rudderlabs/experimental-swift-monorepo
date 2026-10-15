@@ -1,6 +1,7 @@
 name: "Tag & Release Packages"
 # Completes reviewed publications (D20): manual, no inputs, every run scans all packages.
-# Abandoned versions (closed with label `abandon`, or reverted by Abandon Unpublished Version) are reported, never tagged.
+# Abandon Unpublished Version deletes a discarded version's monorepo Release, so nothing queues it; until that run
+# finishes, a merged-then-reverted publish PR is reported as abandoned, never tagged.
 # Maintenance versions (source on release/<key>-X.Y.x) complete on the public release/X.Y.x branch.
 on:
   workflow_dispatch:
