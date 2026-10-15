@@ -62,6 +62,18 @@ class AnchorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "already exists"):
             anchor("sprig", "1.0.0", self.sha, self.root)
 
+    def test_renamed_component_is_anchored_at_its_last_release_commit(self):
+        # The SDK component was renamed sdk -> swift-sdk: Release Please needs `swift-sdk-<manifest version>` at the
+        # commit of the last `sdk-<version>` release. The old tag stays as it is.
+        origin = Path(self.temp.name) / "origin"
+        (origin / "Packages/DemoSDK").mkdir(parents=True)
+        (origin / "Packages/DemoSDK/version.txt").write_text("1.5.0\n")
+        release = commit(origin, "chore(release): sdk 1.5.0")
+        git(origin, "tag", "sdk-1.5.0", release)
+        git(self.root, "fetch", "--quiet", "--tags", "origin")
+        self.assertEqual(anchor("swift-sdk", "1.5.0", release, self.root), "swift-sdk-1.5.0")
+        self.assertEqual(git(self.root, "rev-parse", "sdk-1.5.0^{commit}"), release)
+
     def test_workflow_is_manual_and_creates_only_a_plain_tag(self):
         text = WORKFLOW.read_text()
         self.assertIn("on:\n  workflow_dispatch:\n    inputs:\n", text)

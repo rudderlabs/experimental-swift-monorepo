@@ -11,7 +11,7 @@
       "policies": {
         "RudderStackAnalytics": {
           "mode": "external",
-          "package": "sdk"
+          "package": "swift-sdk"
         }
       },
       "repository": "experimental-integration-swift-firebase",
@@ -46,24 +46,6 @@
         }
       ]
     },
-    "sdk": {
-      "component": "sdk",
-      "path": "Packages/RudderStackAnalytics",
-      "platforms": [
-        "iOS 15",
-        "macOS 12",
-        "tvOS 15",
-        "watchOS 8"
-      ],
-      "policies": {},
-      "repository": "experimental-rudder-sdk-swift",
-      "resources": [
-        "Resources"
-      ],
-      "target": "RudderStackAnalytics",
-      "title": "RudderStack Swift SDK",
-      "toolsVersion": "5.9"
-    },
     "sprig": {
       "component": "integration-sprig",
       "path": "Integrations/Sprig",
@@ -73,7 +55,7 @@
       "policies": {
         "RudderStackAnalytics": {
           "mode": "external",
-          "package": "sdk"
+          "package": "swift-sdk"
         }
       },
       "repository": "experimental-integration-swift-sprig",
@@ -96,6 +78,24 @@
           "url": "https://github.com/UserLeap/userleap-ios-sdk-releases"
         }
       ]
+    },
+    "swift-sdk": {
+      "component": "swift-sdk",
+      "path": "Packages/RudderStackAnalytics",
+      "platforms": [
+        "iOS 15",
+        "macOS 12",
+        "tvOS 15",
+        "watchOS 8"
+      ],
+      "policies": {},
+      "repository": "experimental-rudder-sdk-swift",
+      "resources": [
+        "Resources"
+      ],
+      "target": "RudderStackAnalytics",
+      "title": "RudderStack Swift SDK",
+      "toolsVersion": "5.9"
     }
   },
   "schemaVersion": 1

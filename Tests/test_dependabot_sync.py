@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from common import ROOT
 from dependabot_sync import changed_packages, retitle
 
-PACKAGES = {"sdk": {"path": "Packages/RudderStackAnalytics"}, "firebase": {"path": "Integrations/Firebase"},
+PACKAGES = {"swift-sdk": {"path": "Packages/RudderStackAnalytics"}, "firebase": {"path": "Integrations/Firebase"},
             "sprig": {"path": "Integrations/Sprig"}}
 WORKFLOW = ROOT / ".github/workflows/dependabot-sync.yml"
 

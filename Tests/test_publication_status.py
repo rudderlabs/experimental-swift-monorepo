@@ -41,12 +41,12 @@ class PublicationStatusTests(unittest.TestCase):
                 self.jobs['sprig']['outputs'][field] = old
 
     def test_partial_batch_keeps_verified_package_and_reports_incomplete(self):
-        self.plan.insert(0, {'package': 'sdk', 'version': '0.1.1', 'sha': self.sha})
-        self.jobs['sdk'] = {'result': 'failure'}
+        self.plan.insert(0, {'package': 'swift-sdk', 'version': '0.1.1', 'sha': self.sha})
+        self.jobs['swift-sdk'] = {'result': 'failure'}
         result = summarize(self.plan, self.jobs)
         self.assertEqual(result['status'], 'incomplete')
         self.assertEqual(result['packages']['sprig']['status'], 'published')
-        self.assertEqual(result['packages']['sdk']['status'], 'incomplete')
+        self.assertEqual(result['packages']['swift-sdk']['status'], 'incomplete')
 
     def test_waiting_states_are_not_customer_success(self):
         for state in ('awaiting_review', 'awaiting_dependency'):

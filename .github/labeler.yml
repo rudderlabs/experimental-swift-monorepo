@@ -3,14 +3,14 @@
   - changed-files:
       - any-glob-to-any-file:
           - "Integrations/Firebase/**"
-"pkg:sdk":
-  - changed-files:
-      - any-glob-to-any-file:
-          - "Packages/RudderStackAnalytics/**"
 "pkg:sprig":
   - changed-files:
       - any-glob-to-any-file:
           - "Integrations/Sprig/**"
+"pkg:swift-sdk":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "Packages/RudderStackAnalytics/**"
 "pkg:tooling":
   - changed-files:
       - any-glob-to-any-file:

@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 import re
 
-from common import ROOT, allowlist, inventory, load, write_json
+from common import ROOT, SDK, allowlist, inventory, load, write_json
 from dependency_policy import sync_inventory
 from generate_github import write as write_generated
 from project import PLATFORM, SEMVER
@@ -181,7 +181,7 @@ def allowlisted(root, key):
 
 def sdk_minimum(root, packages):
     """The SDK's current release from the Release Please manifest, or the default before it has one."""
-    return load(root / ".release-please-manifest.json").get(packages["sdk"]["path"], DEFAULT_SDK_MINIMUM)
+    return load(root / ".release-please-manifest.json").get(packages[SDK]["path"], DEFAULT_SDK_MINIMUM)
 
 
 def version_swift(target, version):
@@ -242,8 +242,8 @@ def scaffold(name, root=ROOT, platforms=("iOS 15",), minimum=None, vendor_url=No
     key, target, path = name.lower(), f"RudderIntegration{name}", f"Integrations/{name}"
     repository = allowlisted(root, key)
     packages = inventory(root)
-    if "sdk" not in packages:
-        raise ValueError("release/packages.json has no sdk package; import the core SDK first")
+    if SDK not in packages:
+        raise ValueError("release/packages.json has no swift-sdk package; import the core SDK first")
     if key in packages or (root / path).exists() or any(p["path"] == path for p in packages.values()):
         raise ValueError(f"{key} already exists")
     minimum = minimum or sdk_minimum(root, packages)
@@ -251,7 +251,7 @@ def scaffold(name, root=ROOT, platforms=("iOS 15",), minimum=None, vendor_url=No
         raise ValueError("Versions must be X.Y.Z")
     if bool(vendor_url) != bool(vendor_products) or bool(vendor_url) != bool(vendor_from):
         raise ValueError("Give VENDOR_URL, VENDOR_PRODUCTS and VENDOR_FROM together")
-    sdk_target = packages["sdk"]["target"]
+    sdk_target = packages[SDK]["target"]
     dependencies = [q(sdk_target)] + [f".product(name: {q(p)}, package: {q(identity(vendor_url))})"
                                       for p in vendor_products]
     lines = {"products": product_line(target),
@@ -265,7 +265,7 @@ def scaffold(name, root=ROOT, platforms=("iOS 15",), minimum=None, vendor_url=No
         (root / path / relative).write_text(text)
     add_package(root, key, {"path": path, "target": target, "component": f"integration-{key}",
                             "repository": repository, "platforms": list(platforms), "toolsVersion": TOOLS_VERSION,
-                            "policies": {sdk_target: {"mode": "external", "package": "sdk"}},
+                            "policies": {sdk_target: {"mode": "external", "package": SDK}},
                             "sdkMinimum": minimum})
     add_release_please(root, path, f"integration-{key}", target)
     return {"package": key, "path": path, "target": target, "sdkMinimum": minimum, "sync": sync(root)}

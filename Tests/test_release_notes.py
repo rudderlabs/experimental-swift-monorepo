@@ -11,12 +11,12 @@ from release_notes import display_name, notes, previous_tag, references, release
 MONO = 'https://github.com/rudderlabs/experimental-swift-monorepo'
 CHANGELOG = f'''# Changelog
 
-## [1.4.1]({MONO}/compare/sdk-1.4.0...sdk-1.4.1) (2026-10-12)
+## [1.4.1]({MONO}/compare/swift-sdk-1.4.0...swift-sdk-1.4.1) (2026-10-12)
 
 
 ### Code Refactoring
 
-* **sdk:** read RSVersion from Version.swift ([#25]({MONO}/issues/25)) ([a9f1b45]({MONO}/commit/a9f1b4571ac106bf50b1086c8c2f4a3984f26422))
+* **swift-sdk:** read RSVersion from Version.swift ([#25]({MONO}/issues/25)) ([a9f1b45]({MONO}/commit/a9f1b4571ac106bf50b1086c8c2f4a3984f26422))
 
 
 ### Bug Fixes
@@ -43,7 +43,7 @@ PROVENANCE = {'sourceCommit': 'a' * 40, 'sourceRepository': 'rudderlabs/experime
 
 class ReleaseNotesTests(unittest.TestCase):
     def test_changelog_section_becomes_the_public_format(self):
-        self.assertEqual(notes('sdk', SDK, '1.4.1', CHANGELOG),
+        self.assertEqual(notes('swift-sdk', SDK, '1.4.1', CHANGELOG),
                          '# RudderStack Swift SDK 1.4.1\n\n'
                          '## Bug Fixes\n'
                          f'- fix one ([#30]({MONO}/pull/30))\n'
@@ -56,7 +56,7 @@ class ReleaseNotesTests(unittest.TestCase):
             '- older entry ([#254](https://github.com/rudderlabs/rudder-sdk-swift/pull/254))']})
         self.assertEqual(sections(CHANGELOG, '1.3.1'), {'Bug Fixes': ['- hand-written entry (#249)']})
         self.assertEqual(sections(CHANGELOG, '9.9.9'), {})
-        self.assertEqual(notes('sdk', SDK, '9.9.9', CHANGELOG), '# RudderStack Swift SDK 9.9.9\n')
+        self.assertEqual(notes('swift-sdk', SDK, '9.9.9', CHANGELOG), '# RudderStack Swift SDK 9.9.9\n')
         self.assertEqual(sections('## 0.1.0\n\nLocal lifecycle rehearsal.\n', '0.1.0'),
                          {'': ['Local lifecycle rehearsal.']})
 
@@ -65,37 +65,37 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertEqual(display_name('sprig', None), 'sprig')
 
     def test_release_body_with_whats_changed_compare_and_provenance(self):
-        prs = {25: ('refactor(sdk): read RSVersion from Version.swift', 'SKannaniOS'), 30: ('fix: one', 'someone')}
+        prs = {25: ('refactor(swift-sdk): read RSVersion from Version.swift', 'SKannaniOS'), 30: ('fix: one', 'someone')}
         def gh(args, **kwargs):
             number = int(args[-1].rsplit('/', 1)[1])
             return json.dumps({'title': prs[number][0], 'user': {'login': prs[number][1]},
                                'html_url': f'{MONO}/pull/{number}'})
         with patch('release_notes.run', side_effect=gh) as command:
-            body = release_body('sdk', SDK, '1.4.1', CHANGELOG, PROVENANCE, previous='1.4.0')
+            body = release_body('swift-sdk', SDK, '1.4.1', CHANGELOG, PROVENANCE, previous='1.4.0')
         self.assertEqual([c.args[0][-1] for c in command.call_args_list],
                          ['repos/rudderlabs/experimental-swift-monorepo/pulls/30',
                           'repos/rudderlabs/experimental-swift-monorepo/pulls/25'])
         self.assertTrue(body.startswith('# RudderStack Swift SDK 1.4.1\n\n## Bug Fixes\n'))
         self.assertIn("\n\n## What's Changed\n"
                       f'* fix: one by @someone in {MONO}/pull/30\n'
-                      f'* refactor(sdk): read RSVersion from Version.swift by @SKannaniOS in {MONO}/pull/25\n\n'
+                      f'* refactor(swift-sdk): read RSVersion from Version.swift by @SKannaniOS in {MONO}/pull/25\n\n'
                       '**Full Changelog**: https://github.com/rudderlabs/experimental-rudder-sdk-swift/compare/'
                       '1.4.0...1.4.1\n\n', body)
         self.assertTrue(body.endswith(f'Source: monorepo commit {MONO}/commit/{"a" * 40}\n'))
 
     def test_whats_changed_is_best_effort(self):
         with patch('release_notes.run', side_effect=RuntimeError('403')):
-            body = release_body('sdk', SDK, '1.4.1', CHANGELOG, PROVENANCE)
+            body = release_body('swift-sdk', SDK, '1.4.1', CHANGELOG, PROVENANCE)
         self.assertNotIn("What's Changed", body)
         self.assertNotIn('Full Changelog', body)
         self.assertIn('## Code Refactoring', body)
         with patch('release_notes.run', side_effect=AssertionError('no network offline')):
-            self.assertEqual(release_body('sdk', SDK, '1.4.1', CHANGELOG, PROVENANCE, online=False), body)
+            self.assertEqual(release_body('swift-sdk', SDK, '1.4.1', CHANGELOG, PROVENANCE, online=False), body)
 
     def test_references_and_previous_tag(self):
-        self.assertEqual(references(notes('sdk', SDK, '1.4.1', CHANGELOG)),
+        self.assertEqual(references(notes('swift-sdk', SDK, '1.4.1', CHANGELOG)),
                          [('rudderlabs/experimental-swift-monorepo', 30), ('rudderlabs/experimental-swift-monorepo', 25)])
-        self.assertEqual(previous_tag(['1.2.0', '1.10.0', '1.9.3', '2.0.0', 'sdk-1.9.9', 'v1.9.9'], '1.10.1'),
+        self.assertEqual(previous_tag(['1.2.0', '1.10.0', '1.9.3', '2.0.0', 'swift-sdk-1.9.9', 'v1.9.9'], '1.10.1'),
                          '1.10.0')
         self.assertEqual(previous_tag(['1.10.0', '1.9.3'], '1.10.0'), '1.9.3')
         self.assertIsNone(previous_tag(['1.0.0'], '1.0.0'))

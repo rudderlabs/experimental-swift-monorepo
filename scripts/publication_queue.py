@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 
-from common import ROOT, OWNER, RELEASE_BRANCH, SOURCE_NAME, git, inventory, run, url
+from common import ROOT, OWNER, RELEASE_BRANCH, SDK, SOURCE_NAME, git, inventory, run, url
 from maintenance_branch import public_base, semver, source_line
 from project import SEMVER
 from publish import verify_tree
@@ -44,7 +44,7 @@ def queue(root=ROOT):
     pending, skipped = [], []
     packages = inventory(root)
     # SDK work precedes integration work.
-    for key in sorted(packages, key=lambda k: k != 'sdk'):
+    for key in sorted(packages, key=lambda k: k != SDK):
         prefix = packages[key]['component'] + '-'
         intents, bases = [], {}
         for release in (r for page in pages for r in page):

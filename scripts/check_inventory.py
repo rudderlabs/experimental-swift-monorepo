@@ -46,7 +46,10 @@ def problems(root=ROOT):
         if path not in by_path or entry.get("component") != by_path[path].get("component"):
             errors.append(f"Release Please package {path} has no package with component {entry.get('component')!r}")
     if not errors:
-        errors += [f"Stale generated file (run python3 scripts/generate_github.py): {p}" for p in stale(root)]
+        try:
+            errors += [f"Stale generated file (run python3 scripts/generate_github.py): {p}" for p in stale(root)]
+        except ValueError as error:
+            errors.append(str(error))
     errors += [f"Action not pinned to a 40-character commit SHA: {ref}" for ref in unpinned(root)]
     return errors
 

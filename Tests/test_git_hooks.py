@@ -34,8 +34,8 @@ class CommitMessageTests(unittest.TestCase):
 
     def test_valid_messages(self):
         for message in ["feat: add session timeout", "fix(sprig): skip empty traits when identifying users",
-                        "feat(sdk)!: remove the deprecated flush API", "refactor!: rename the queue",
-                        "chore(release-please): v1.3.0", "perf(sdk,sprig): batch writes",
+                        "feat(swift-sdk)!: remove the deprecated flush API", "refactor!: rename the queue",
+                        "chore(release-please): v1.3.0", "perf(swift-sdk,sprig): batch writes",
                         "docs: explain make prepare\n\nLonger body. With Capitals.\n",
                         "# editor comment\n\nci: pin actions\n", "build(firebase): import 1.1.2",
                         "test: cover iOS 15", "fix: handle iOS crash", "style: " + "a" * 93,
@@ -168,8 +168,8 @@ class PrePushTestPlanTests(unittest.TestCase):
         self.change("Packages/DemoSDK/Sources/DemoSDK/Added.swift")
         result, calls = self.push()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(calls, ["test PKG=sdk"])
-        self.assertIn("testing: sdk (CI also tests any packages that depend on them)", result.stdout)
+        self.assertEqual(calls, ["test PKG=swift-sdk"])
+        self.assertIn("testing: swift-sdk (CI also tests any packages that depend on them)", result.stdout)
 
     def test_skip_switch_skips_only_the_tests(self):
         self.change("Packages/DemoSDK/Sources/DemoSDK/Added.swift")

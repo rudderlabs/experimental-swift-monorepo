@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import re
 
-from common import ROOT, git, inventory, load, write_json
+from common import ROOT, SDK, git, inventory, load, write_json
 from project import SEMVER, wide_access
 from dependency_policy import package_requirements, manifest
 
@@ -76,7 +76,7 @@ def from_outputs(outputs, root=ROOT):
     """Released packages from path-based Release Please outputs, SDK first."""
     result = []
     packages = inventory(root)
-    for key in sorted(packages, key=lambda k: k != 'sdk'):
+    for key in sorted(packages, key=lambda k: k != SDK):
         p = packages[key]
         if str(outputs.get(p['path'] + '--release_created', '')).lower() != 'true':
             continue
@@ -90,8 +90,8 @@ def from_outputs(outputs, root=ROOT):
 
 def jobs(plan):
     """Workflow outputs: the SDK job input and the integrations matrix."""
-    return {'plan': plan, 'sdk': next((p for p in plan if p['package'] == 'sdk'), None),
-            'integrations': [p for p in plan if p['package'] != 'sdk']}
+    return {'plan': plan, 'sdk': next((p for p in plan if p['package'] == SDK), None),
+            'integrations': [p for p in plan if p['package'] != SDK]}
 
 
 if __name__ == '__main__':

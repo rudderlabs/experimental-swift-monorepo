@@ -71,7 +71,7 @@ if [ -n "$problem" ]; then
     echo ""
     echo "  Examples:"
     echo "    fix(sprig): skip empty traits when identifying users"
-    echo "    feat(sdk)!: remove the deprecated flush API"
+    echo "    feat(swift-sdk)!: remove the deprecated flush API"
     echo "    docs: explain make prepare"
     echo ""
     exit 1

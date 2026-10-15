@@ -82,7 +82,7 @@ class MatrixTests(unittest.TestCase):
             self.assertIn(f"name: {job} (${{{{ matrix.package }}}})", block)
 
     def test_fixture_inventory_gives_one_job_per_package_in_allowlist_order(self):
-        self.assertEqual(matrix(FIXTURE), ["sdk", "sprig", "firebase"])
+        self.assertEqual(matrix(FIXTURE), ["swift-sdk", "sprig", "firebase"])
 
     def test_ci_ok_needs_every_job_and_always_runs(self):
         block = WORKFLOW.split("\n  ci-ok:\n", 1)[1]
@@ -150,9 +150,9 @@ class TestTargetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             folder = root / ".swiftpm/xcode/xcshareddata/xcschemes"
-            with test_scheme(DEMO, "sdk", {"path": "Packages/DemoSDK", "target": "DemoSDK"}, root) as name:
-                self.assertEqual(name, "package-ci-sdk")
-                scheme = ElementTree.parse(folder / "package-ci-sdk.xcscheme").getroot()
+            with test_scheme(DEMO, "swift-sdk", {"path": "Packages/DemoSDK", "target": "DemoSDK"}, root) as name:
+                self.assertEqual(name, "package-ci-swift-sdk")
+                scheme = ElementTree.parse(folder / "package-ci-swift-sdk.xcscheme").getroot()
                 built, tested = ([e.find("BuildableReference").get("BlueprintName") for e in scheme.iter(tag)]
                                  for tag in ("BuildActionEntry", "TestableReference"))
                 self.assertEqual(built, ["DemoTests", "RudderIntegrationKitTests"])
@@ -180,8 +180,8 @@ def remote(identity, location="https://github.com/example/{}.git"):
 
 
 class ExportManifestTests(unittest.TestCase):
-    packages = {"sdk": {"repository": "experimental-rudder-sdk-swift"}}
-    kit = {"platforms": ["iOS 15", "tvOS 15.4"], "policies": {"Core": {"mode": "external", "package": "sdk"}},
+    packages = {"swift-sdk": {"repository": "experimental-rudder-sdk-swift"}}
+    kit = {"platforms": ["iOS 15", "tvOS 15.4"], "policies": {"Core": {"mode": "external", "package": "swift-sdk"}},
            "vendors": [{"identity": "vendor-kit", "product": "A"}, {"identity": "vendor-kit", "product": "B"}]}
 
     def test_matching_manifest_has_no_problems(self):
@@ -199,7 +199,7 @@ class ExportManifestTests(unittest.TestCase):
 
 
 class ScopeHintTests(unittest.TestCase):
-    packages = {"sdk": {"path": "Packages/RudderStackAnalytics"}, "sprig": {"path": "Integrations/Sprig"}}
+    packages = {"swift-sdk": {"path": "Packages/RudderStackAnalytics"}, "sprig": {"path": "Integrations/Sprig"}}
 
     def test_scope_naming_an_untouched_package_warns(self):
         warnings = scope_warnings("fix(sprig): skip empty traits", ["Packages/RudderStackAnalytics/Sources/A.swift"],
@@ -211,18 +211,18 @@ class ScopeHintTests(unittest.TestCase):
     def test_touched_unknown_missing_or_invalid_scopes_do_not_warn(self):
         paths = ["Integrations/Sprig/Sources/RudderIntegrationSprig/Sprig.swift"]
         for title in ["fix(sprig): skip empty traits", "feat(sprig)!: drop iOS 14", "ci(release): pin actions",
-                      "fix: no scope", "Fix(sdk): not a valid title", "chore(deps): bump"]:
+                      "fix: no scope", "Fix(swift-sdk): not a valid title", "chore(deps): bump"]:
             self.assertEqual(scope_warnings(title, paths, self.packages), [], title)
         # A prefix of the folder name is not the folder.
         self.assertEqual(len(scope_warnings("fix(sprig): x", ["Integrations/SprigLegacy/A.swift"], self.packages)), 1)
 
     def test_several_scopes_are_checked_one_by_one(self):
-        warnings = scope_warnings("feat(sdk,sprig): coordinated", ["Integrations/Sprig/README.md"], self.packages)
-        self.assertEqual([w.split(")")[0] for w in warnings], ["The PR title scope (sdk"])
+        warnings = scope_warnings("feat(swift-sdk,sprig): coordinated", ["Integrations/Sprig/README.md"], self.packages)
+        self.assertEqual([w.split(")")[0] for w in warnings], ["The PR title scope (swift-sdk"])
 
     def test_cli_never_fails(self):
         with contextlib.redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(main(["scope-hint", "--title", "fix(sdk): x", "--base", "0" * 40, "--head", "1" * 40]), 0)
+            self.assertEqual(main(["scope-hint", "--title", "fix(swift-sdk): x", "--base", "0" * 40, "--head", "1" * 40]), 0)
         self.assertIn("::warning title=PR title scope::scope check skipped", output.getvalue())
 
 

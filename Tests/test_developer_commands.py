@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from check_inventory import problems
 from common import ROOT, commit, git, inventory, load, write_json
 from dependency_policy import manifest, markers
+from generate_github import DROPDOWNS, OPTIONS
 from import_package import MODES, import_package, steps
 from scaffold import (ROOT_MANIFEST, insert, product_line, release_please_entry, scaffold, sdk_minimum, sync,
                       target_lines)
@@ -83,7 +84,7 @@ def monorepo(base):
     # Only the fixture SDK: the real packages must not leak in from the copied files.
     write_json(root / "release-please-config.json", {**load(root / "release-please-config.json"), "packages": {}})
     config = load(root / "release/packages.json")
-    config["packages"] = {"sdk": {"path": SDK, "target": "RudderStackAnalytics", "component": "sdk",
+    config["packages"] = {"swift-sdk": {"path": SDK, "target": "RudderStackAnalytics", "component": "swift-sdk",
                                   "repository": "experimental-rudder-sdk-swift", "policies": {},
                                   "platforms": ["iOS 15"], "toolsVersion": "5.9"}}
     write_json(root / "release/packages.json", config)
@@ -128,7 +129,7 @@ class ScaffoldTests(unittest.TestCase):
 
     def test_new_integration_passes_every_check_without_workflow_edits(self):
         root = self.root
-        workflows = {p.name: p.read_text() for p in (root / ".github/workflows").iterdir()}
+        workflows = {p.name: OPTIONS.sub("", p.read_text()) for p in (root / ".github/workflows").iterdir()}
         result = make(root, "new-integration", "NAME=Firebase", "PLATFORMS=iOS 15,tvOS 15",
                       f"VENDOR_URL={VENDOR}", "VENDOR_PRODUCTS=VendorKit", "VENDOR_FROM=2.0.0")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -139,7 +140,7 @@ class ScaffoldTests(unittest.TestCase):
             "path": "Integrations/Firebase", "target": target, "component": "integration-firebase",
             "repository": "experimental-integration-swift-firebase", "platforms": ["iOS 15", "tvOS 15"],
             "toolsVersion": "5.9", "sdkMinimum": "1.4.0", "vendors": [vendor], "vendorProducts": ["VendorKit"],
-            "policies": {"RudderStackAnalytics": {"mode": "external", "package": "sdk"}}})
+            "policies": {"RudderStackAnalytics": {"mode": "external", "package": "swift-sdk"}}})
         self.assertEqual(load(root / "release-please-config.json")["packages"],
                          {"Integrations/Firebase": release_please_entry("integration-firebase", target)})
         self.assertEqual(load(root / ".release-please-manifest.json"), {SDK: "1.4.0"})
@@ -161,7 +162,11 @@ class ScaffoldTests(unittest.TestCase):
         self.assertIn('"firebase"', (root / ".github/ISSUE_TEMPLATE/bug_report.yml").read_text())
         checked = make(root, "check")
         self.assertEqual(checked.returncode, 0, checked.stderr)
-        self.assertEqual({p.name: p.read_text() for p in (root / ".github/workflows").iterdir()}, workflows)
+        # Only the generated package dropdowns change.
+        self.assertEqual({p.name: OPTIONS.sub("", p.read_text()) for p in (root / ".github/workflows").iterdir()},
+                         workflows)
+        for name in DROPDOWNS:
+            self.assertIn("          - firebase\n", (root / ".github/workflows" / name).read_text())
         commit(root, "feat(firebase): add Firebase integration")
         self.assertEqual(make(root, "sync").returncode, 0)
         self.assertEqual(git(root, "status", "--porcelain"), "")
@@ -246,7 +251,7 @@ class ImportTests(unittest.TestCase):
                                                 "vendorProducts")},
                          {"component": "integration-sprig", "platforms": ["iOS 15", "tvOS 15"], "toolsVersion": "5.9",
                           "sdkMinimum": "1.2.1", "vendorProducts": ["VendorKit"],
-                          "policies": {"RudderStackAnalytics": {"mode": "external", "package": "sdk"}}})
+                          "policies": {"RudderStackAnalytics": {"mode": "external", "package": "swift-sdk"}}})
         package = (root / "Package.swift").read_text()
         self.assertIn(f'.package(url: "{VENDOR}", .upToNextMajor(from: "4.29.0")),', package)
         self.assertIn('dependencies: [.product(name: "VendorKit", package: "vendor-kit"), "RudderStackAnalytics"],',
