@@ -1,13 +1,15 @@
 name: PR Validation
 # PR and main checks (D22: iOS Simulator only; other platforms build at release time in publish.py).
-# D34: a PR runs the package jobs and `policy` only for what it affects (ci_plan.py); push to main runs all.
+# Maintenance branches release/<key>-X.Y.x (maintenance_branch.py) get the same checks as main.
+# D34: the package jobs and `policy` run only for what a PR or push affects (ci_plan.py); a push compares with its
+# previous commit and runs all when that commit is unknown (new branch, force push).
 # `ci-ok` is the only required check: the matrix job names change as packages are added.
 # Every command lives in scripts/ (ci_plan.py, package_ci.py), so `make test` and `make lint` run the same commands.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'release/*-*.*.x']
   push:
-    branches: [main]
+    branches: [main, 'release/*-*.*.x']
 permissions:
   contents: read
 concurrency:
@@ -30,17 +32,18 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
-          fetch-depth: 0  # the PR base commit, to list the changed paths
+          fetch-depth: 0  # the PR base or pushed-over commit, to list the changed paths
       - id: plan
         run: |
           if [ "$EVENT" = pull_request ]; then
             python3 scripts/ci_plan.py --base "$BASE"
           else
-            python3 scripts/ci_plan.py --all
+            python3 scripts/ci_plan.py --before "$BEFORE"
           fi
         env:
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
 
   policy:
     # macOS: dependency_policy.py needs `swift package dump-package`, and the RUN_SWIFT_BUILD_TESTS

@@ -336,6 +336,17 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn('  group: experimental-release-please-${{ inputs.branch || github.ref_name }}\n', text)
         self.assertNotIn('target-branch: main', text)
 
+    def test_pr_checks_run_on_main_and_maintenance_branches(self):
+        # `ci-ok` and `pr-title` are the required checks on both (PR #48 into release/sdk-1.4.x got none).
+        ci, title = self.read('ci.yml'), self.read('pr-title.yml')
+        self.assertIn("  pull_request:\n    branches: [main, 'release/*-*.*.x']\n", ci)
+        self.assertIn("  push:\n    branches: [main, 'release/*-*.*.x']\n", ci)
+        self.assertIn("  pull_request:\n    branches: [main, 'release/*-*.*.x']\n", title)
+        self.assertIn('BASE: ${{ github.event.pull_request.base.sha }}', ci)  # the PR base, whichever branch
+        for text in (ci, title):
+            self.assertNotIn('refs/heads/main', text)
+            self.assertNotIn("github.base_ref == 'main'", text)
+
     def test_create_maintenance_branch_is_manual_on_main_and_validates_first(self):
         text = self.read('create-maintenance-branch.yml')
         self.assertIn('name: Create Maintenance Branch\n', text)

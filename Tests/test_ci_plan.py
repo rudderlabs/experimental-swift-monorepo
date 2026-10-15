@@ -1,4 +1,4 @@
-"""PR CI plan (ci_plan.py, D34): what a PR tests and exports, and whether the policy job runs."""
+"""CI plan (ci_plan.py, D34): what a PR or push tests and exports, and whether the policy job runs."""
 import ast
 import contextlib
 import io
@@ -19,14 +19,14 @@ os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from common import ROOT, commit, git, write_json
-from ci_plan import changed, ci_plan, imported, main
+from ci_plan import changed, ci_plan, imported, main, push_plan
 
 FIXTURE = ROOT / "Tests/Fixtures/demo"
 WORKFLOW = (ROOT / ".github/workflows/ci.yml").read_text()
 
 
 class CiPlanTests(unittest.TestCase):
-    """D34: a PR checks what it affects; push to main checks everything."""
+    """D34: a PR or push checks what it affects."""
     every = ["sdk", "sprig", "firebase"]
     sprig = "Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift"
 
@@ -50,6 +50,13 @@ class CiPlanTests(unittest.TestCase):
         # Exported integrations build against the published SDK tag, so only their tests see the local SDK.
         self.assertEqual(self.plan("Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift"),
                          {"test": self.every, "export": ["sdk"], "policy": False})
+
+    def test_pre_push_tests_only_the_changed_packages(self):
+        # The pre-push hook leaves the dependents to CI; shared build inputs still select every package.
+        sdk = "Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift"
+        self.assertEqual(ci_plan([sdk], self.root, with_dependents=False),
+                         {"test": ["sdk"], "export": ["sdk"], "policy": False})
+        self.assertEqual(ci_plan(["Package.swift", sdk], self.root, with_dependents=False)["test"], self.every)
 
     def test_dependents_come_from_the_inventory_so_a_new_integration_needs_no_edit(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -125,12 +132,14 @@ class CiPlanTests(unittest.TestCase):
         modules |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
         self.assertNotIn("ci_plan", modules)
 
-    def test_push_to_main_checks_everything(self):
+    def test_workflow_plans_a_pr_from_its_base_and_a_push_from_its_previous_commit(self):
         self.assertEqual(ci_plan(None, self.root), {"test": self.every, "export": self.every, "policy": True})
         block = WORKFLOW.split("\n  packages:\n", 1)[1].split("\n  policy:\n", 1)[0]
-        self.assertIn("python3 scripts/ci_plan.py --all", block)
         self.assertIn('python3 scripts/ci_plan.py --base "$BASE"', block)
         self.assertIn("BASE: ${{ github.event.pull_request.base.sha }}", block)
+        self.assertIn('python3 scripts/ci_plan.py --before "$BEFORE"', block)
+        self.assertIn("BEFORE: ${{ github.event.before }}", block)
+        self.assertIn("fetch-depth: 0", block)
         self.assertIn("if: needs.packages.outputs.policy == 'true'", WORKFLOW.split("\n  policy:\n", 1)[1])
 
     def test_cli_prints_the_plan_and_the_affected_packages(self):
@@ -140,6 +149,10 @@ class CiPlanTests(unittest.TestCase):
         self.assertEqual(set(json.loads(output.getvalue())), {"test", "export", "policy"})
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             main(["--all", "--affected"])
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            main(["--before", "HEAD", "--affected"])
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            main(["--all", "--no-dependents"])
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             main([])
 
@@ -155,6 +168,32 @@ class CiPlanTests(unittest.TestCase):
             self.assertEqual(changed(base, root), [self.sprig])
             self.assertEqual(ci_plan(changed(base, root), root, base),
                              {"test": ["sprig"], "export": ["sprig"], "policy": False})
+
+    def test_push_checks_what_changed_since_the_previous_commit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copytree(self.root, root, dirs_exist_ok=True)
+            git(root, "init", "--initial-branch=main")
+            first = commit(root, "test: baseline")
+            sdk = root / "Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift"
+            sdk.write_text(sdk.read_text() + "// change\n")
+            before = commit(root, "fix(sdk): change")
+            (root / self.sprig).write_text((root / self.sprig).read_text() + "// change\n")
+            commit(root, "chore(release): sprig")
+            # Only the pushed commits count: the earlier SDK change does not select its dependents again.
+            self.assertEqual(push_plan(before, root), {"test": ["sprig"], "export": ["sprig"], "policy": False})
+            self.assertEqual(push_plan(first, root), {"test": self.every, "export": ["sdk", "sprig"], "policy": False})
+
+    def test_push_with_an_unknown_previous_commit_checks_everything(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copytree(self.root, root, dirs_exist_ok=True)
+            git(root, "init", "--initial-branch=main")
+            commit(root, "test: baseline")
+            everything = {"test": self.every, "export": self.every, "policy": True}
+            # A new branch (all zeros), no value, and a force-pushed-over commit the checkout lacks.
+            for before in ["0" * 40, "", "1234567890abcdef1234567890abcdef12345678"]:
+                self.assertEqual(push_plan(before, root), everything, repr(before))
 
 
 

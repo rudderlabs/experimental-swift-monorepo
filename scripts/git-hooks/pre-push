@@ -2,13 +2,19 @@
 
 # ──────────────────────────────────────────────────────────────
 # pre-push hook (ported from rudder-sdk-swift)
-# Validates branch name, then tests only what the push affects, using
-# the same plan as PR CI (`scripts/ci_plan.py --base origin/main`):
-# `make test PKG=<key>` for each affected package and `make test-python`
-# when scripts, release data or other policy paths change. Docs-only
-# pushes run no tests. Without a local origin/main it runs the full
-# `make test`. The hook never fetches: run `git fetch origin` to
+# Validates branch name, then tests only the packages the branch
+# changed, using PR CI's plan without dependents
+# (`scripts/ci_plan.py --base origin/main --no-dependents`):
+# `make test PKG=<key>` for each changed package and `make test-python`
+# when scripts, release data or other policy paths change. CI also tests
+# their dependents (an SDK change tests every integration there).
+# Docs-only pushes run no tests. Without a local origin/main it runs the
+# full `make test`. The hook never fetches: run `git fetch origin` to
 # refresh origin/main.
+#
+# `SKIP_PRE_PUSH_TESTS=1 git push` skips the test step only: the global
+# hooks (Gitleaks) and the branch name check still run, and CI runs the
+# tests.
 #
 # PRE_PUSH_FORCE_TESTS=1 runs the test step without a terminal (used
 # by Tests/test_git_hooks.py only).
@@ -74,6 +80,13 @@ done
 
 # ── 2. Tests (Terminal only) ─────────────────────────────────
 
+if [ "$SKIP_PRE_PUSH_TESTS" = "1" ]; then
+    echo "[INFO] SKIP_PRE_PUSH_TESTS=1: skipping tests — CI will run them."
+    echo ""
+    echo "All pre-push checks passed. Ready to push."
+    exit 0
+fi
+
 # [ -t 1 ] checks if stdout is connected to an interactive terminal.
 # GUI git clients (SourceTree, Fork, etc.) are non-interactive, and
 # macOS Gatekeeper blocks Swift Package Manager in that context.
@@ -131,7 +144,8 @@ fi
 
 # The plan covers the checked-out branch (HEAD) since it left origin/main,
 # committed changes only: {"test": [keys], "export": [...], "policy": bool}.
-if ! PLAN=$(cd "$ROOT" && python3 scripts/ci_plan.py --base "$BASE"); then
+# --no-dependents: "test" lists only the packages the branch changed.
+if ! PLAN=$(cd "$ROOT" && python3 scripts/ci_plan.py --base "$BASE" --no-dependents); then
     echo "[ERROR] Could not compute the test plan (scripts/ci_plan.py)."
     exit 1
 fi
@@ -141,7 +155,7 @@ echo ""
 if [ "$POLICY" != "1" ] && [ -z "$PACKAGES" ]; then
     echo "[INFO] No package or tooling changes since $BASE: no tests needed."
 else
-    [ -n "$PACKAGES" ] && echo "[INFO] Packages changed since $BASE (with their dependents) → testing: ${PACKAGES// /, }"
+    [ -n "$PACKAGES" ] && echo "[INFO] Packages changed since $BASE → testing: ${PACKAGES// /, } (CI also tests any packages that depend on them)"
     [ "$POLICY" = "1" ] && echo "[INFO] Scripts, release data or other tooling changed → running the Python tests"
     [ "$POLICY" = "1" ] && run test-python
     for key in $PACKAGES; do

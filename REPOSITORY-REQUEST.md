@@ -35,6 +35,7 @@ Do not add these packages to a Swift registry or the Swift Package Index.
 7. Store `RELEASE_PRIVATE_KEY` in the `experimental-spm-release` environment.
 8. Require a reviewer for initial jobs that use this environment, and permit jobs from `main`.
 9. Apply review and CI requirements to source `main` after its initial seed, while allowing reviewed PR merges.
+   Apply the same to maintenance branches with a `release-lines` ruleset (pattern `release/*-*.*.x`); required checks `ci-ok` and `pr-title`.
 10. Allow the publisher App to create and update publication `main`; verify the approved publisher route under inherited protection.
 11. Protect full semantic version tags against update and deletion.
 12. Disable Issues and Discussions in the three generated publication repositories.
