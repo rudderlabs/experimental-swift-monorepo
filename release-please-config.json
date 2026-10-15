@@ -64,7 +64,7 @@
   ],
   "packages": {
     "Packages/RudderStackAnalytics": {
-      "component": "sdk",
+      "component": "swift-sdk",
       "package-name": "RudderStackAnalytics",
       "extra-files": [
         {

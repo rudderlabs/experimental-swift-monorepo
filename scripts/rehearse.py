@@ -489,7 +489,7 @@ class Lab:
         self.seed(self.remotes / 'apple/swift-collections.git', COLLECTIONS_FILES,
                   'test: local stand-in for swift-collections', '1.1.4')
         readme_only = {'README.md': '# Package\n', 'LICENSE': 'MIT\n', '.gitignore': '.build/\n'}
-        self.public('sdk', readme_only)
+        self.public('swift-sdk', readme_only)
         self.public('firebase', readme_only)
         # Sprig existed before the monorepo: same Sources/ at tag 0.1.1, plus foreign files and workflows.
         with tempfile.TemporaryDirectory(prefix='rehearsal-legacy-') as temp:
@@ -510,28 +510,28 @@ class Lab:
 
 
 def step_1(lab):
-    sha = lab.release({'sdk': '0.1.0'})
-    readme_main = git(lab.bare('sdk'), 'rev-parse', 'main')
-    check(lab.recover() == {'sdk 0.1.0': 'awaiting_review'}, 'SDK bootstrap PR expected')
-    pr = lab.pulls('sdk')[0]
-    check(pr['head']['ref'] == 'publication/sdk/0.1.0' and 'README-only' in pr['body'], 'bootstrap PR')
-    check(git(lab.bare('sdk'), 'rev-parse', 'main') == readme_main and not git(lab.bare('sdk'), 'tag'),
+    sha = lab.release({'swift-sdk': '0.1.0'})
+    readme_main = git(lab.bare('swift-sdk'), 'rev-parse', 'main')
+    check(lab.recover() == {'swift-sdk 0.1.0': 'awaiting_review'}, 'SDK bootstrap PR expected')
+    pr = lab.pulls('swift-sdk')[0]
+    check(pr['head']['ref'] == 'publication/swift-sdk/0.1.0' and 'README-only' in pr['body'], 'bootstrap PR')
+    check(git(lab.bare('swift-sdk'), 'rev-parse', 'main') == readme_main and not git(lab.bare('swift-sdk'), 'tag'),
           'an open bot PR changed main or tags')
-    check(lab.recover() == {'sdk 0.1.0': 'skipped awaiting_review'}, 'open PR must not be rebuilt')
-    check(len(lab.pulls('sdk')) == 1 and lab.pulls('sdk')[0]['head']['sha'] == pr['head']['sha'],
+    check(lab.recover() == {'swift-sdk 0.1.0': 'skipped awaiting_review'}, 'open PR must not be rebuilt')
+    check(len(lab.pulls('swift-sdk')) == 1 and lab.pulls('swift-sdk')[0]['head']['sha'] == pr['head']['sha'],
           'Tag & Release Packages rebuilt an open PR')
-    merged = lab.merge('sdk', 'publication/sdk/0.1.0')
-    check(lab.recover() == {'sdk 0.1.0': 'published'}, 'Tag & Release Packages should tag the merged bootstrap')
-    check(git(lab.bare('sdk'), 'rev-parse', '0.1.0^{commit}') == merged, 'tag is not the merge commit')
-    check(json.loads(git(lab.bare('sdk'), 'show', '0.1.0:.publication.json'))['sourceCommit'] == sha,
+    merged = lab.merge('swift-sdk', 'publication/swift-sdk/0.1.0')
+    check(lab.recover() == {'swift-sdk 0.1.0': 'published'}, 'Tag & Release Packages should tag the merged bootstrap')
+    check(git(lab.bare('swift-sdk'), 'rev-parse', '0.1.0^{commit}') == merged, 'tag is not the merge commit')
+    check(json.loads(git(lab.bare('swift-sdk'), 'show', '0.1.0:.publication.json'))['sourceCommit'] == sha,
           'provenance source commit')
-    release = lab.releases('sdk')
+    release = lab.releases('swift-sdk')
     check(len(release) == 1 and release[0]['name'] == '0.1.0' and release[0]['body'].startswith('# DemoSDK 0.1.0\n\n')
           and release[0]['body'].endswith(f'\n\nSource: monorepo commit https://github.com/{OWNER}/{SOURCE_NAME}'
                                           f'/commit/{sha}\n'), f'Release record: {release}')
-    check(lab.pulls('sdk')[0]['title'] == 'chore(release): 0.1.0', 'publish PR title')
-    check('README.md' in git(lab.bare('sdk'), 'ls-tree', '--name-only', '0.1.0') and
-          'Package.swift' in git(lab.bare('sdk'), 'ls-tree', '--name-only', '0.1.0'), 'bootstrap tree')
+    check(lab.pulls('swift-sdk')[0]['title'] == 'chore(release): 0.1.0', 'publish PR title')
+    check('README.md' in git(lab.bare('swift-sdk'), 'ls-tree', '--name-only', '0.1.0') and
+          'Package.swift' in git(lab.bare('swift-sdk'), 'ls-tree', '--name-only', '0.1.0'), 'bootstrap tree')
     lab.proved('README-only repo got a bootstrap bot PR, no tag while open, Tag & Release Packages did not rebuild the '
                'open PR')
     lab.proved('after the reviewed merge, Tag & Release Packages tagged 0.1.0 at the merge commit and created the Release')
@@ -576,7 +576,7 @@ def step_2(lab):
 
 
 def step_3(lab):
-    others = lab.refs('sdk', 'firebase')
+    others = lab.refs('swift-sdk', 'firebase')
     lab.change('Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift', '"unnamed event"', '"unnamed sprig event"',
                'fix(sprig): name empty sprig events', ['sprig'])
     sha = lab.release({'sprig': '0.1.2'})
@@ -593,7 +593,7 @@ def step_3(lab):
     check(release['name'] == '0.1.2' and release['body'].startswith('# DemoSprig 0.1.2\n\nLocal lifecycle') and
           f'**Full Changelog**: https://github.com/{OWNER}/{NAMES["sprig"]}/compare/0.1.1...0.1.2\n' in
           release['body'] and release['body'].endswith(f'/commit/{sha}\n'), 'Release')
-    lab.integration_only = lab.refs('sdk', 'firebase') == others
+    lab.integration_only = lab.refs('swift-sdk', 'firebase') == others
     lab.proved('sprig 0.1.2: export and build before the bot PR; tag at the merge commit after Tag & Release Packages')
 
 
@@ -602,26 +602,26 @@ def step_4(lab):
     others = lab.refs('sprig', 'firebase')
     lab.change('Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift', 'public static func hasPrivacyManifest',
                '/// Reports whether the privacy manifest ships.\n    public static func hasPrivacyManifest',
-               'fix(sdk): document the privacy manifest check', ['sdk'])
-    lab.release({'sdk': '0.1.1'})
-    check(lab.recover() == {'sdk 0.1.1': 'awaiting_review'}, 'SDK PR expected')
-    lab.merge('sdk', 'publication/sdk/0.1.1')
-    check(lab.recover() == {'sdk 0.1.1': 'published'}, 'SDK should publish')
+               'fix(swift-sdk): document the privacy manifest check', ['swift-sdk'])
+    lab.release({'swift-sdk': '0.1.1'})
+    check(lab.recover() == {'swift-sdk 0.1.1': 'awaiting_review'}, 'SDK PR expected')
+    lab.merge('swift-sdk', 'publication/swift-sdk/0.1.1')
+    check(lab.recover() == {'swift-sdk 0.1.1': 'published'}, 'SDK should publish')
     check(lab.refs('sprig', 'firebase') == others, 'the SDK release changed integration refs')
     lab.proved('sprig 0.1.2 left SDK and Firebase refs unchanged; SDK 0.1.1 left Sprig and Firebase unchanged')
 
 
 def step_5(lab):
     lab.change('Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift', 'public enum DemoSDK {',
-               'public enum DemoSDK {\n    public static let apiLevel = 2', 'feat(sdk): add an API level',
-               ['sdk'])
-    lab.release({'sdk': '0.2.0', 'firebase': '0.1.0'}, sdk_minimum=('0.2.0', ['firebase']))
+               'public enum DemoSDK {\n    public static let apiLevel = 2', 'feat(swift-sdk): add an API level',
+               ['swift-sdk'])
+    lab.release({'swift-sdk': '0.2.0', 'firebase': '0.1.0'}, sdk_minimum=('0.2.0', ['firebase']))
     status = lab.recover()
-    check(status == {'sdk 0.2.0': 'awaiting_review', 'firebase 0.1.0': 'awaiting_dependency'}, str(status))
+    check(status == {'swift-sdk 0.2.0': 'awaiting_review', 'firebase 0.1.0': 'awaiting_dependency'}, str(status))
     check(not lab.pulls('firebase') and not git(lab.bare('firebase'), 'tag'), 'firebase wrote while waiting')
-    lab.merge('sdk', 'publication/sdk/0.2.0')
+    lab.merge('swift-sdk', 'publication/swift-sdk/0.2.0')
     status = lab.recover()
-    check(status == {'sdk 0.2.0': 'published', 'firebase 0.1.0': 'awaiting_review'}, str(status))
+    check(status == {'swift-sdk 0.2.0': 'published', 'firebase 0.1.0': 'awaiting_review'}, str(status))
     check(lab.pulls('firebase')[0]['head']['ref'] == 'publication/firebase/0.1.0', 'firebase bootstrap PR')
     manifest = git(lab.bare('firebase'), 'show', 'publication/firebase/0.1.0:Package.swift')
     check('from: "0.2.0"' in manifest and 'exact: "1.1.4"' in manifest, 'firebase requirements')
@@ -678,7 +678,7 @@ def step_8(lab):
         check(lab.recover() == {'sprig 0.1.9': 'skipped incomplete'}, 'nothing should be pending')
     check(lab.snapshot() == before, 'Tag & Release Packages changed refs, PRs or Releases')
     tags = {key: git(lab.bare(key), 'tag', '--sort=v:refname').split() for key in NAMES}
-    check(tags == {'sdk': ['0.1.0', '0.1.1', '0.2.0'], 'sprig': ['0.1.1', '0.1.2', '0.1.3'],
+    check(tags == {'swift-sdk': ['0.1.0', '0.1.1', '0.2.0'], 'sprig': ['0.1.1', '0.1.2', '0.1.3'],
                    'firebase': ['0.1.0']}, str(tags))
     lab.records['publicTags'] = tags
     lab.proved('two more Tag & Release Packages runs changed no ref, PR or Release; only the broken item is reported')
@@ -686,7 +686,7 @@ def step_8(lab):
 
 def step_9(lab):
     consumers = [lab.consumer(key, version) for key, version in
-                 (('sdk', '0.1.0'), ('sprig', '0.1.1'), ('firebase', '0.1.0'))]
+                 (('swift-sdk', '0.1.0'), ('sprig', '0.1.1'), ('firebase', '0.1.0'))]
     lab.records['consumers'] = consumers
     lab.proved('one package at a time, fresh SwiftPM state, offline mirrors: SDK 0.1.0, the pre-monorepo '
                'Sprig 0.1.1 tag and Firebase 0.1.0 resolve and run')
@@ -697,10 +697,10 @@ def step_9(lab):
 
 
 def step_10(lab):
-    sdk = lab.bare('sdk')
+    sdk = lab.bare('swift-sdk')
     public_main, others = git(sdk, 'rev-parse', 'main'), lab.refs('sprig', 'firebase')
     git(lab.runner, 'fetch', '--quiet', '--tags', 'origin')
-    for key, version, message in (('sdk', '0.1.0', 'not the latest 0.1 patch; use 0.1.1'),
+    for key, version, message in (('swift-sdk', '0.1.0', 'not the latest 0.1 patch; use 0.1.1'),
                                   ('sprig', '0.1.9', 'main is still on 0.1.3')):
         try:
             create_maintenance_branch(key, version, lab.runner)
@@ -710,46 +710,46 @@ def step_10(lab):
         raise AssertionError(f'{key} {version} maintenance branch was not refused')
     # Create Maintenance Branch (as the App bot): main is on SDK 0.2.0, customers are on 0.1.x.
     with patch.dict(os.environ, GIT_CONFIG_GLOBAL=str(lab.bot)):
-        plan = create_maintenance_branch('sdk', '0.1.1', lab.runner)
-    branch = 'release/sdk-0.1.x'
-    check(plan['branch'] == branch and plan['from'] == git(lab.source, 'rev-parse', 'sdk-0.1.1^{commit}'), str(plan))
+        plan = create_maintenance_branch('swift-sdk', '0.1.1', lab.runner)
+    branch = 'release/swift-sdk-0.1.x'
+    check(plan['branch'] == branch and plan['from'] == git(lab.source, 'rev-parse', 'swift-sdk-0.1.1^{commit}'), str(plan))
     with tempfile.TemporaryDirectory(prefix='rehearsal-maintenance-') as temp:
         work = Path(temp) / 'work'
         run(['git', 'clone', '--quiet', '--branch', branch, f'https://github.com/{SOURCE}.git', work])
         config = load(work / 'release-please-config.json')
-        check(config['packages'] == {'Packages/DemoSDK': {'component': 'sdk', 'versioning': 'always-bump-patch'}},
+        check(config['packages'] == {'Packages/DemoSDK': {'component': 'swift-sdk', 'versioning': 'always-bump-patch'}},
               str(config['packages']))
         # A reviewed fix PR targeting the maintenance branch, then its Release Please PR (a patch, as configured).
         demo = work / 'Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift'
         check('apiLevel' not in demo.read_text(), 'the 0.2.0 feature reached the 0.1.x line')
         demo.write_text(demo.read_text().replace('public static func hasPrivacyManifest',
                                                  '/// Patched on the 0.1.x line.\n    public static func hasPrivacyManifest'))
-        commit(work, 'fix(sdk): patch the 0.1.x line')
+        commit(work, 'fix(swift-sdk): patch the 0.1.x line')
         git(work, 'push', '--quiet', 'origin', f'HEAD:refs/heads/{branch}')
-        sha = lab.release({'sdk': '0.1.2'}, work=work, branch=branch)
+        sha = lab.release({'swift-sdk': '0.1.2'}, work=work, branch=branch)
     status = lab.recover()
-    check(status == {'sdk 0.1.2': 'awaiting_review', 'sprig 0.1.9': 'skipped incomplete'}, str(status))
-    pr = next(p for p in lab.pulls('sdk') if p['head']['ref'] == 'publication/sdk/0.1.2')
+    check(status == {'swift-sdk 0.1.2': 'awaiting_review', 'sprig 0.1.9': 'skipped incomplete'}, str(status))
+    pr = next(p for p in lab.pulls('swift-sdk') if p['head']['ref'] == 'publication/swift-sdk/0.1.2')
     check(pr['base']['ref'] == 'release/0.1.x', f'publish PR base {pr["base"]["ref"]}')
     check(git(sdk, 'rev-parse', 'release/0.1.x') == git(sdk, 'rev-parse', '0.1.1^{commit}'),
           'public release/0.1.x does not start at tag 0.1.1')
-    check(git(sdk, 'rev-parse', 'publication/sdk/0.1.2^') == git(sdk, 'rev-parse', 'release/0.1.x'), 'PR parent')
-    merged = lab.merge('sdk', 'publication/sdk/0.1.2')
+    check(git(sdk, 'rev-parse', 'publication/swift-sdk/0.1.2^') == git(sdk, 'rev-parse', 'release/0.1.x'), 'PR parent')
+    merged = lab.merge('swift-sdk', 'publication/swift-sdk/0.1.2')
     status = lab.recover()
-    check(status == {'sdk 0.1.2': 'published', 'sprig 0.1.9': 'skipped incomplete'}, str(status))
+    check(status == {'swift-sdk 0.1.2': 'published', 'sprig 0.1.9': 'skipped incomplete'}, str(status))
     check(git(sdk, 'rev-parse', '0.1.2^{commit}') == merged == git(sdk, 'rev-parse', 'release/0.1.x'),
           'tag is not the merge commit on release/0.1.x')
     check(json.loads(git(sdk, 'show', '0.1.2:.publication.json'))['sourceCommit'] == sha, 'provenance')
     check('apiLevel' not in git(sdk, 'show', '0.1.2:Sources/DemoSDK/DemoSDK.swift'), '0.2.0 code in 0.1.2')
     check(git(sdk, 'rev-parse', 'main') == public_main and lab.refs('sprig', 'firebase') == others,
           'the maintenance release changed public main or other packages')
-    release = lab.releases('sdk')[-1]
+    release = lab.releases('swift-sdk')[-1]
     check((release['tag_name'], release['make_latest']) == ('0.1.2', 'false'), str(release))
     check(lab.recover() == {'sprig 0.1.9': 'skipped incomplete'}, 'Tag & Release Packages is not idempotent')
-    lab.records['maintenanceConsumer'] = lab.consumer('sdk', '0.1.2')
+    lab.records['maintenanceConsumer'] = lab.consumer('swift-sdk', '0.1.2')
     lab.proved('Create Maintenance Branch refused a non-latest patch and a line main has not left; it cut '
-               'release/sdk-0.1.x from tag sdk-0.1.1 with an SDK-only, always-bump-patch config')
-    lab.proved('SDK 0.1.2 (fix on release/sdk-0.1.x, without the 0.2.0 feature): the bot created public '
+               'release/swift-sdk-0.1.x from tag swift-sdk-0.1.1 with an SDK-only, always-bump-patch config')
+    lab.proved('SDK 0.1.2 (fix on release/swift-sdk-0.1.x, without the 0.2.0 feature): the bot created public '
                'release/0.1.x at tag 0.1.1, the publish PR targeted it, and Tag & Release Packages tagged its merge '
                'commit; public main and the other packages did not change; the Release is not "Latest"')
 
@@ -790,7 +790,7 @@ def rehearse(ios=False, consumer_template=None, base=None, quick=False, through=
     with lab.environment(identity):
         with lab.step(0, 'set up the fixture monorepo and local public repositories'):
             lab.setup()
-            lab.proved('sdk and firebase public repositories are README-only; sprig has foreign files, '
+            lab.proved('swift-sdk and firebase public repositories are README-only; sprig has foreign files, '
                        '.github/workflows and tag 0.1.1')
 
         for number, (title, action) in enumerate(STEPS[:through], 1):

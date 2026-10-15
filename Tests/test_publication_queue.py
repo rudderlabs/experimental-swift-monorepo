@@ -27,7 +27,7 @@ class PublicationQueueTests(unittest.TestCase):
         sha, pub = 'a' * 40, 'b' * 40
         intents = [{'tag_name': 'integration-sprig-0.1.1', 'draft': False, 'prerelease': False},
                    {'tag_name': 'unrelated-1.0.0', 'draft': False, 'prerelease': False},
-                   {'tag_name': 'sdk-0.2.0', 'draft': True, 'prerelease': False}]
+                   {'tag_name': 'swift-sdk-0.2.0', 'draft': True, 'prerelease': False}]
         # `lines`: version -> source line (main, release/<key>-X.Y.x, or an error for neither).
         intents += [{'tag_name': f'integration-sprig-{v}', 'draft': False, 'prerelease': False}
                     for v in lines or {} if v != '0.1.1']

@@ -28,7 +28,7 @@ All five repositories use default `main`. Release Please targets `main`.
 The source and consumer require reviewed PRs after initial creation.
 Generated publication updates also inherit the PR requirement. The publisher uses the [reviewed publication route](docs/reviewed-publication/README.md). The existing App needs Contents write and Pull requests write. No main bypass is required.
 Dispatch manual runs using `--ref main` and permit `main` in the release environment policy.
-`publish.yml` takes the package key as text and accepts only a key in `release/allowlist.json` that the source snapshot's `release/packages.json` lists with the same repository. Release runs use a `publish (sdk)` job and one integrations matrix job (`publish (<key>)` per leg); the batch status reads each leg's `publication-<key>-<version>` artifact.
+`publish.yml` offers the package keys as a generated dropdown and still accepts only a key in `release/allowlist.json` that the source snapshot's `release/packages.json` lists with the same repository. Release runs use a `publish (swift-sdk)` job and one integrations matrix job (`publish (<key>)` per leg); the batch status reads each leg's `publication-<key>-<version>` artifact.
 Local hooks reject ordinary main pushes in the reviewed-route regression tests, and main pushes and tag moves in the local rehearsal. Neither proves hosted App permissions or ruleset behavior.
 
 Follow [SB-01 through SB-06](docs/release-boundaries/README.md) before the remote go decision. Leave the first real release PR open while recording unchanged publication refs. Source component releases represent intent; only verified publication status represents customer success. Retry incomplete jobs against the original source SHA.
@@ -36,7 +36,7 @@ Follow [SB-01 through SB-06](docs/release-boundaries/README.md) before the remot
 ## Baseline manual release
 
 1. Record the full reviewed source `main` SHA whose manifest versions are all `0.1.0`.
-2. Dispatch `publish.yml` for `sdk`, version `0.1.0`, and that SHA.
+2. Dispatch `publish.yml` for `swift-sdk`, version `0.1.0`, and that SHA.
 3. Review and merge the bot-created SDK publication PR.
 4. Run Tag & Release Packages (`complete-publication.yml`, no inputs); verify the public SDK tag and GitHub Release.
 5. Dispatch `publish.yml` for `sprig`, version `0.1.0`, and the same SHA.
@@ -55,7 +55,7 @@ The consumer workflow has no credentials for the internal source monorepo.
 The initial scaffold is a hidden `chore` commit. It does not request a feature release.
 Before the first post-baseline change, record the baseline source SHA reachable from `main` as `bootstrap-sha` in `release-please-config.json`.
 Create matching source component baseline tags and GitHub Releases at the baseline SHA:
-`sdk-0.1.0`, `integration-sprig-0.1.0`, and `integration-firebase-0.1.0`.
+`swift-sdk-0.1.0`, `integration-sprig-0.1.0`, and `integration-firebase-0.1.0`.
 These source tags differ from the plain public package tags. Do not copy publication tags into source.
 Review this baseline setup before enabling normal Release Please changes.
 

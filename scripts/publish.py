@@ -8,7 +8,7 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from common import (ROOT, OWNER, RELEASE_BRANCH, allowlist, anonymous_env, commit, file_hashes, git,
+from common import (ROOT, OWNER, RELEASE_BRANCH, SDK, allowlist, anonymous_env, commit, file_hashes, git,
                     inventory, load, mirrors, run, swift_options, text, url, write_json)
 from maintenance_branch import line, public_base, semver, source_line
 from project import SEMVER, export, platform_builds
@@ -221,8 +221,8 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
         elif mirror_root is None:
             # Dependency readiness is a waiting state, not permission to publish a broken package.
             minimum = package.get("sdkMinimum")
-            if minimum and not run(["git", "ls-remote", url("sdk"), f"refs/tags/{minimum}"]):
-                return waiting("awaiting_dependency", key, version, source, dependency="sdk", minimum=minimum)
+            if minimum and not run(["git", "ls-remote", url(SDK), f"refs/tags/{minimum}"]):
+                return waiting("awaiting_dependency", key, version, source, dependency=SDK, minimum=minimum)
             if start:
                 # The bot creates the maintenance base once, at the verified tag of the line's latest version.
                 git(repo, "push", "origin", f"{start}:refs/heads/{base}")

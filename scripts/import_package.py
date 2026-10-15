@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import tempfile
 
-from common import OWNER, ROOT, git, inventory, run
+from common import OWNER, ROOT, SDK, git, inventory, run
 from dependency_policy import manifest, requirements
 from project import SEMVER, TOOLS, requirement
 from scaffold import (NAME, add_package, allowlisted, identity, insert, product_line, q, release_please_entry,
@@ -79,7 +79,7 @@ def describe(data, key, dest, sdk_target, sdk_repository):
     vendors = requirements(data)
     sdk = [i for i, v in vendors.items() if i in SDK_IDENTITIES or identity(v["url"]) == sdk_repository.lower()]
     minimum = None
-    if key != "sdk":
+    if key != SDK:
         if len(sdk) != 1:
             raise ValueError("The imported integration has no rudder-sdk-swift requirement")
         minimum = vendors.pop(sdk[0])["requirement"]["lower"]
@@ -114,9 +114,9 @@ def describe(data, key, dest, sdk_target, sdk_repository):
     tools = tools_version(data["toolsVersion"]["_version"])
     if not platforms or not TOOLS.fullmatch(tools):
         raise ValueError("The imported manifest needs explicit platforms and a tools version")
-    entry = {"path": dest, "target": target, "component": "sdk" if key == "sdk" else f"integration-{key}",
+    entry = {"path": dest, "target": target, "component": SDK if key == SDK else f"integration-{key}",
              "platforms": platforms, "toolsVersion": tools,
-             "policies": {} if key == "sdk" else {sdk_target: {"mode": "external", "package": "sdk"}}}
+             "policies": {} if key == SDK else {sdk_target: {"mode": "external", "package": SDK}}}
     if minimum:
         entry["sdkMinimum"] = minimum
     resources = [r["path"] for r in targets[target].get("resources") or []]
@@ -231,15 +231,15 @@ def import_package(repo, tag, name, mode, root=ROOT, kind="integration", ref=Non
         raise ValueError(f"MODE must be one of {MODES} and KIND one of {KINDS}")
     if not SEMVER.fullmatch(tag) or not NAME.fullmatch(name):
         raise ValueError("TAG must be X.Y.Z and NAME PascalCase")
-    key = "sdk" if kind == "core" else name.lower()
+    key = SDK if kind == "core" else name.lower()
     dest = f"Packages/{name}" if kind == "core" else f"Integrations/{name}"
     repository = allowlisted(root, key)
     packages = inventory(root)
     if key in packages or (root / dest).exists() or (root / "Examples" / name).exists():
         raise ValueError(f"{key} already exists")
-    if kind == "integration" and "sdk" not in packages:
-        raise ValueError("release/packages.json has no sdk package; import the core SDK first (KIND=core)")
-    sdk_target = packages["sdk"]["target"] if "sdk" in packages else name
+    if kind == "integration" and SDK not in packages:
+        raise ValueError("release/packages.json has no swift-sdk package; import the core SDK first (KIND=core)")
+    sdk_target = packages[SDK]["target"] if SDK in packages else name
     if git(root, "status", "--porcelain"):
         raise ValueError("Start the import from a clean working tree")
     with tempfile.TemporaryDirectory() as temp:

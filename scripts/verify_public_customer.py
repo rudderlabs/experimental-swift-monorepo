@@ -5,14 +5,24 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from common import ROOT, CONSUMER_NAME, OWNER, allowlist, anonymous_env, git, inventory, load, run, write_json
+from common import ROOT, CONSUMER_NAME, OWNER, SDK, allowlist, anonymous_env, git, inventory, load, run, write_json
 
 
-def dependency_args(key, version, consumer_sdk, minimum=None):
-    """Arguments for the consumer's dependencies.py: one --set per package (it appends repeated flags)."""
-    selections = [f'{key}={version}']
-    if key != 'sdk' and minimum and tuple(map(int, consumer_sdk.split('.'))) < tuple(map(int, minimum.split('.'))):
-        selections.append('sdk=' + minimum)
+def consumer_key(dependencies, repository):
+    """The consumer's own key for a package: its dependencies.json entry whose URL names the package repository.
+    The consumer keeps its keys (`sdk`, `sprig`, ...), so a package key rename here needs no consumer change."""
+    found = [k for k, d in dependencies.items()
+             if d.get('url', '').removesuffix('.git').rsplit('/', 1)[-1] == repository]
+    if len(found) != 1:
+        raise ValueError(f'The consumer has no single dependency on {repository}')
+    return found[0]
+
+
+def dependency_args(name, version, sdk_name, consumer_sdk, minimum=None):
+    """Arguments for the consumer's dependencies.py, in consumer keys: one --set per package (flags repeat)."""
+    selections = [f'{name}={version}']
+    if name != sdk_name and minimum and tuple(map(int, consumer_sdk.split('.'))) < tuple(map(int, minimum.split('.'))):
+        selections.append(f'{sdk_name}={minimum}')
     return [arg for selection in selections for arg in ('--set', selection)]
 
 
@@ -29,9 +39,11 @@ def verify(key, version, destination, source_root=ROOT, consumer_source=None):
             run(['git', 'clone', '--branch', 'main', '--single-branch',
                  f'https://github.com/{OWNER}/{CONSUMER_NAME}.git', consumer], env=env)
             sha = git(consumer, 'rev-parse', 'HEAD')
-        minimum = inventory(source_root)[key].get('sdkMinimum')
-        sdk = load(consumer / 'dependencies.json')['sdk']['version']
-        run(['python3', 'scripts/dependencies.py', *dependency_args(key, version, sdk, minimum)], cwd=consumer, env=env)
+        packages, dependencies = inventory(source_root), load(consumer / 'dependencies.json')
+        name, sdk_name = (consumer_key(dependencies, packages[k]['repository']) for k in (key, SDK))
+        args = dependency_args(name, version, sdk_name, dependencies[sdk_name]['version'],
+                               packages[key].get('sdkMinimum'))
+        run(['python3', 'scripts/dependencies.py', *args], cwd=consumer, env=env)
         result = json.loads(run(['python3', 'scripts/verify.py', '--ios'], cwd=consumer, env=env))
         result.update(package=key, version=version, consumerCommit=sha)
         write_json(destination / 'customer-result.json', result)

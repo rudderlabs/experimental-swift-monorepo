@@ -73,7 +73,7 @@ Not covered: GitHub Actions, App permissions, rulesets, environments, Release Pl
 | `scripts/import_package.py` | `make import-integration`: imports a repository at a tag, or at a later non-code-only `REF` (history or snapshot), without a Release Please entry |
 | `scripts/dependabot_sync.py` | Releasable title for a Dependabot PR whose markers changed (`dependabot-sync.yml`) |
 | `scripts/check_inventory.py` | CI check: package list, allowlist, Release Please entries, generated files and action SHA pins agree |
-| `scripts/generate_github.py` | Regenerates issue forms, `labeler.yml` and `labels.json` from the package list (`--check` in CI) |
+| `scripts/generate_github.py` | Regenerates issue forms, `labeler.yml`, `labels.json` and the `package` dropdowns of manual workflows from the package list (`--check` in CI) |
 | `scripts/project.py` | Graph inspection and deterministic standalone export |
 | `scripts/publish.py` | Build validation, immutable tag publication, drift check, recovery; `--mode` normal, takeover or bootstrap |
 | `scripts/reviewed_publication.py` | Bot PRs, takeover and bootstrap checks, merged-version verification from stored provenance |
@@ -126,12 +126,12 @@ Resources keep their `process` or `copy` rule from `swift package dump-package`.
 
 ## Maintainer path
 
-Release Please targets `main` and owns version intent. It opens one release PR per package, so a package can be released alone, and creates component tags such as `sdk-0.1.1` in the source repository.
+Release Please targets `main` and owns version intent. It opens one release PR per package, so a package can be released alone, and creates component tags such as `swift-sdk-0.1.1` in the source repository.
 Release how-tos (release one package alone, `Release-As`, roll forward a bad version, public activity, sync back an outside PR, discard an unpublished version): [Maintainer how-tos](docs/reviewed-publication/README.md#maintainer-how-tos).
 The publisher emits plain tags such as `0.1.1` in the corresponding public package repository.
 Dependent integrations wait until their required SDK tag is available. The recovery workflow resumes pending publication.
 An integration-only release skips the SDK job.
-`release-please.yml` turns the path-based Release Please outputs into a plan (`release_plan.py from-outputs`): a `publish (sdk)` job, then one matrix job with a `publish (<key>)` leg per released integration. No workflow lists package names.
+`release-please.yml` turns the path-based Release Please outputs into a plan (`release_plan.py from-outputs`): a `publish (swift-sdk)` job, then one matrix job with a `publish (<key>)` leg per released integration. No workflow lists package names.
 Publication jobs take destinations only from `release/allowlist.json` (every package must be allowlisted with its own repository), use an environment-scoped App token, and run in one concurrency group per package.
 Adding a package needs only its `release/packages.json` entry, its allowlist entry, and the regenerated GitHub files; `make new-integration` and `make import-integration` write them.
 A retry must use the original source SHA and version. A newer SHA cannot reuse the same version.
@@ -152,7 +152,7 @@ See [REPOSITORY-REQUEST.md](REPOSITORY-REQUEST.md) for the exact provisioning re
 The independent consumer installs the three public package URLs with exact versions.
 The macOS command-line demo configures `RudderStackAnalytics` with the Firebase integration (Sprig is iOS only).
 The iOS app links all three products. Versions are checked through `Package.resolved` pins, since the SDKs keep version constants internal.
-Use the consumer's `scripts/dependencies.py --set sprig=1.0.1 --set sdk=1.2.1` (one `--set` per package) to prepare an upgrade.
+Use the consumer's `scripts/dependencies.py --set sprig=1.0.1 --set sdk=1.2.1` (one `--set` per package, in the consumer's own keys; `verify_public_customer.py` maps package keys to them by repository URL) to prepare an upgrade.
 Review the generated manifests and `Package.resolved` before committing a public consumer upgrade.
 After a publication, `scripts/verify_public_customer.py <package> <version> <evidence-dir>` clones the consumer's `main` anonymously and runs that upgrade with an iOS Simulator build.
 Add `--consumer <checkout>` to test an unmerged consumer change locally; packages still resolve from the public URLs.

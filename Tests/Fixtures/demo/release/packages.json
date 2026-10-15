@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "packages": {
-    "sdk": {
+    "swift-sdk": {
       "path": "Packages/DemoSDK",
       "target": "DemoSDK",
-      "component": "sdk",
+      "component": "swift-sdk",
       "repository": "experimental-rudder-sdk-swift",
       "policies": {},
       "resources": [
@@ -25,7 +25,7 @@
       "policies": {
         "DemoSDK": {
           "mode": "external",
-          "package": "sdk"
+          "package": "swift-sdk"
         },
         "DemoShared": {
           "mode": "vendor"
@@ -46,7 +46,7 @@
       "policies": {
         "DemoSDK": {
           "mode": "external",
-          "package": "sdk"
+          "package": "swift-sdk"
         },
         "DemoShared": {
           "mode": "vendor"

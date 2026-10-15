@@ -8,7 +8,7 @@ body:
     attributes:
       label: "Package"
       options:
-        - "sdk"
+        - "swift-sdk"
         - "sprig"
         - "firebase"
         - "Other / not sure"

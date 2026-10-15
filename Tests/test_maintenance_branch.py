@@ -29,7 +29,7 @@ BOT_ID_EMAIL = '12345678+rudderstack-github-actions[bot]@users.noreply.github.co
 SDK = 'Packages/DemoSDK'
 CONFIG = {'release-type': 'simple', 'include-component-in-tag': True, 'separate-pull-requests': True,
           'pull-request-title-pattern': 'chore(release):${component} ${version}',
-          'packages': {SDK: {'component': 'sdk', 'extra-files': ['Sources/DemoSDK/Version.swift']},
+          'packages': {SDK: {'component': 'swift-sdk', 'extra-files': ['Sources/DemoSDK/Version.swift']},
                        'Integrations/Sprig': {'component': 'integration-sprig'},
                        'Integrations/Firebase': {'component': 'integration-firebase'}}}
 
@@ -49,8 +49,8 @@ class SourceLineTests(unittest.TestCase):
         shutil.copytree(FIXTURE / 'release', self.mono / 'release')
         write_json(self.mono / 'release-please-config.json', CONFIG)
         self.tags = {}
-        for tag, versions in (('sdk-1.4.0', ('1.4.0', '1.0.0')), ('integration-sprig-1.0.0', ('1.4.0', '1.0.0')),
-                              ('sdk-1.4.1', ('1.4.1', '1.0.0')), ('sdk-1.5.0', ('1.5.0', '1.0.0'))):
+        for tag, versions in (('swift-sdk-1.4.0', ('1.4.0', '1.0.0')), ('integration-sprig-1.0.0', ('1.4.0', '1.0.0')),
+                              ('swift-sdk-1.4.1', ('1.4.1', '1.0.0')), ('swift-sdk-1.5.0', ('1.5.0', '1.0.0'))):
             write_json(self.mono / '.release-please-manifest.json', {SDK: versions[0], 'Integrations/Sprig': versions[1]})
             (self.mono / 'notes.txt').write_text(tag + '\n')
             self.tags[tag] = commit(self.mono, f'chore: release {tag}')
@@ -58,35 +58,35 @@ class SourceLineTests(unittest.TestCase):
         git(self.mono, 'push', '--quiet', 'origin', 'main', '--tags')
 
     def test_dry_run_validates_and_writes_nothing(self):
-        plan = create('sdk', '1.4.1', self.mono, dry_run=True)
-        self.assertEqual((plan['branch'], plan['tag'], plan['from']), ('release/sdk-1.4.x', 'sdk-1.4.1',
-                                                                      self.tags['sdk-1.4.1']))
-        self.assertEqual(plan['message'], 'chore(sdk): start 1.4.x maintenance line')
+        plan = create('swift-sdk', '1.4.1', self.mono, dry_run=True)
+        self.assertEqual((plan['branch'], plan['tag'], plan['from']), ('release/swift-sdk-1.4.x', 'swift-sdk-1.4.1',
+                                                                      self.tags['swift-sdk-1.4.1']))
+        self.assertEqual(plan['message'], 'chore(swift-sdk): start 1.4.x maintenance line')
         self.assertEqual(git(self.origin, 'for-each-ref', 'refs/heads/release'), '')
 
     def test_branch_starts_at_the_tag_with_a_single_package_patch_only_config(self):
-        plan = create('sdk', '1.4.1', self.mono)
-        head = git(self.origin, 'rev-parse', 'refs/heads/release/sdk-1.4.x')
+        plan = create('swift-sdk', '1.4.1', self.mono)
+        head = git(self.origin, 'rev-parse', 'refs/heads/release/swift-sdk-1.4.x')
         self.assertEqual(head, plan['commit'])
-        self.assertEqual(git(self.origin, 'rev-parse', 'release/sdk-1.4.x^'), self.tags['sdk-1.4.1'])
+        self.assertEqual(git(self.origin, 'rev-parse', 'release/swift-sdk-1.4.x^'), self.tags['swift-sdk-1.4.1'])
         self.assertEqual(git(self.origin, 'log', '-1', '--format=%s|%an', head),
-                         'chore(sdk): start 1.4.x maintenance line|Developer')
-        self.assertEqual(git(self.origin, 'diff', '--name-only', 'sdk-1.4.1', head), 'release-please-config.json')
+                         'chore(swift-sdk): start 1.4.x maintenance line|Developer')
+        self.assertEqual(git(self.origin, 'diff', '--name-only', 'swift-sdk-1.4.1', head), 'release-please-config.json')
         config = json.loads(git(self.origin, 'show', f'{head}:release-please-config.json'))
         self.assertEqual(config['packages'], {SDK: {**CONFIG['packages'][SDK], 'versioning': 'always-bump-patch'}})
         self.assertEqual({k: v for k, v in config.items() if k != 'packages'},
                          {k: v for k, v in CONFIG.items() if k != 'packages'})
         # The temporary worktree is gone; main and tags are untouched.
         self.assertEqual(len(git(self.mono, 'worktree', 'list').splitlines()), 1)
-        self.assertEqual(git(self.origin, 'rev-parse', 'main'), self.tags['sdk-1.5.0'])
-        with self.assertRaisesRegex(ValueError, 'release/sdk-1.4.x already exists'):
-            create('sdk', '1.4.1', self.mono)
+        self.assertEqual(git(self.origin, 'rev-parse', 'main'), self.tags['swift-sdk-1.5.0'])
+        with self.assertRaisesRegex(ValueError, 'release/swift-sdk-1.4.x already exists'):
+            create('swift-sdk', '1.4.1', self.mono)
 
     def test_refusals(self):
-        for args, message in ((('sdk', '1.4.0'), r'1.4.0 is not the latest 1.4 patch; use 1.4.1'),
-                              (('sdk', '1.3.0'), 'Monorepo tag sdk-1.3.0 is missing'),
+        for args, message in ((('swift-sdk', '1.4.0'), r'1.4.0 is not the latest 1.4 patch; use 1.4.1'),
+                              (('swift-sdk', '1.3.0'), 'Monorepo tag swift-sdk-1.3.0 is missing'),
                               (('sprig', '1.0.0'), 'main is still on 1.0.0'),
-                              (('unknown', '1.0.0'), 'Unknown package'), (('sdk', '1.4'), 'not X.Y.Z')):
+                              (('unknown', '1.0.0'), 'Unknown package'), (('swift-sdk', '1.4'), 'not X.Y.Z')):
             with self.subTest(args=args), self.assertRaisesRegex(ValueError, message):
                 create(*args, self.mono)
         self.assertEqual(git(self.origin, 'for-each-ref', 'refs/heads/release'), '')
@@ -94,45 +94,45 @@ class SourceLineTests(unittest.TestCase):
             maintenance_config(CONFIG, 'Integrations/Other')
 
     def maintenance_commit(self):
-        create('sdk', '1.4.1', self.mono)
+        create('swift-sdk', '1.4.1', self.mono)
         git(self.mono, 'fetch', '--quiet', 'origin')
-        git(self.mono, 'checkout', '--quiet', '-b', 'fix', 'origin/release/sdk-1.4.x')
+        git(self.mono, 'checkout', '--quiet', '-b', 'fix', 'origin/release/swift-sdk-1.4.x')
         (self.mono / 'fix.txt').write_text('fix\n')
-        sha = commit(self.mono, 'fix(sdk): patch the 1.4 line')
-        git(self.mono, 'push', '--quiet', 'origin', 'HEAD:refs/heads/release/sdk-1.4.x')
+        sha = commit(self.mono, 'fix(swift-sdk): patch the 1.4 line')
+        git(self.mono, 'push', '--quiet', 'origin', 'HEAD:refs/heads/release/swift-sdk-1.4.x')
         git(self.mono, 'fetch', '--quiet', 'origin')
         return sha
 
     def test_line_is_main_or_the_matching_maintenance_branch_else_refused(self):
         fix = self.maintenance_commit()
-        self.assertEqual(source_line(self.mono, 'sdk', self.tags['sdk-1.4.1'], '1.4.1'), 'main')
-        self.assertEqual(source_line(self.mono, 'sdk', fix, '1.4.2'), 'release/sdk-1.4.x')
-        for key, version in (('sdk', '1.5.1'), ('sprig', '1.4.2')):
+        self.assertEqual(source_line(self.mono, 'swift-sdk', self.tags['swift-sdk-1.4.1'], '1.4.1'), 'main')
+        self.assertEqual(source_line(self.mono, 'swift-sdk', fix, '1.4.2'), 'release/swift-sdk-1.4.x')
+        for key, version in (('swift-sdk', '1.5.1'), ('sprig', '1.4.2')):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'neither main nor release/'):
                 source_line(self.mono, key, fix, version)
         git(self.mono, 'checkout', '--quiet', '-b', 'side', 'main')
         (self.mono / 'side.txt').write_text('side\n')
         side = commit(self.mono, 'test: unreviewed side branch')
-        with self.assertRaisesRegex(ValueError, 'neither main nor release/sdk-1.5.x'):
-            source_line(self.mono, 'sdk', side, '1.5.1')
+        with self.assertRaisesRegex(ValueError, 'neither main nor release/swift-sdk-1.5.x'):
+            source_line(self.mono, 'swift-sdk', side, '1.5.1')
         # Abandon finds the public base from the version's monorepo tag.
-        git(self.mono, 'tag', 'sdk-1.4.2', fix)
-        self.assertEqual(publication_base(self.mono, 'sdk', '1.4.2'), 'release/1.4.x')
-        self.assertEqual(publication_base(self.mono, 'sdk', '1.4.1'), 'main')
+        git(self.mono, 'tag', 'swift-sdk-1.4.2', fix)
+        self.assertEqual(publication_base(self.mono, 'swift-sdk', '1.4.2'), 'release/1.4.x')
+        self.assertEqual(publication_base(self.mono, 'swift-sdk', '1.4.1'), 'main')
 
     def test_release_please_target_branch(self):
         self.assertEqual(target('main'), 'main')
-        self.assertEqual(target('release/sdk-1.4.x'), 'release/sdk-1.4.x')
+        self.assertEqual(target('release/swift-sdk-1.4.x'), 'release/swift-sdk-1.4.x')
         self.assertEqual(target('main', 'release/sprig-1.0.x'), 'release/sprig-1.0.x')
-        for ref, branch, message in (('release/sdk-1.4.x', 'release/sdk-1.4.x', 'on main only'),
+        for ref, branch, message in (('release/swift-sdk-1.4.x', 'release/swift-sdk-1.4.x', 'on main only'),
                                      ('release/unknown-1.0.x', '', 'Not main'), ('feat/x', '', 'Not main'),
-                                     ('release/sdk-1.4', '', 'Not main'), ('main', 'release/sdk-01.4.x', 'Not main')):
+                                     ('release/swift-sdk-1.4', '', 'Not main'), ('main', 'release/swift-sdk-01.4.x', 'Not main')):
             with self.subTest(ref=ref, branch=branch), self.assertRaisesRegex(ValueError, message):
                 target(ref, branch)
         # The push filter of release-please.yml and the pre-push hook both accept every maintenance branch.
         hook = (ROOT / 'scripts/git-hooks/pre-push').read_text()
         self.assertIn('|hotfix|release)\\/[a-zA-Z0-9._-]+$', hook)
-        for name in ('release/sdk-1.4.x', 'release/sprig-10.0.x', 'release/integration-x-0.1.x'):
+        for name in ('release/swift-sdk-1.4.x', 'release/sprig-10.0.x', 'release/integration-x-0.1.x'):
             self.assertTrue(BRANCH.fullmatch(name) and fnmatch.fnmatch(name, 'release/*-*.*.x'), name)
 
 
@@ -170,7 +170,7 @@ class PublicMaintenanceTests(unittest.TestCase):
         folder = folder or self.repo
         (folder / 'VERSION').write_text(version + '\n')
         (folder / '.publication.json').unlink(missing_ok=True)
-        write_json(folder / '.publication.json', {'package': 'sdk', 'version': version, 'sourceCommit': 'a' * 40,
+        write_json(folder / '.publication.json', {'package': 'swift-sdk', 'version': version, 'sourceCommit': 'a' * 40,
                                                   'fileHashes': file_hashes(folder)})
         return commit(folder, f'chore(release): {version}') if folder == self.repo else None
 
@@ -201,20 +201,20 @@ class PublicMaintenanceTests(unittest.TestCase):
                                'isArchived': False})
         return run([self.remote if str(a).startswith('https://github.com/rudderlabs/') else a for a in args], **kwargs)
 
-    def publish(self, version='1.4.2', line='release/sdk-1.4.x', package=None):
+    def publish(self, version='1.4.2', line='release/swift-sdk-1.4.x', package=None):
         def export_fixture(key, version, destination, root):
             shutil.copytree(self.stage, destination)
             return self.expected
         with patch.dict(os.environ, ENABLE_EXPERIMENTAL_PUBLICATION='true', GIT_CONFIG_GLOBAL=str(self.identity)), \
              patch('publish.export', side_effect=export_fixture), \
-             patch('publish.inventory', return_value={'sdk': {'repository': 'experimental-rudder-sdk-swift',
+             patch('publish.inventory', return_value={'swift-sdk': {'repository': 'experimental-rudder-sdk-swift',
                                                               **(package or {})}}), \
              patch('publish.validate'), patch('publish.source_commit', return_value='a' * 40), \
              patch('publish.source_line', return_value=line), patch('publish.run', side_effect=self.command), \
              patch('publish.ensure_release', return_value='https://example.invalid/release') as release, \
              patch('reviewed_publication.find_pr', side_effect=self.find), \
              patch('reviewed_publication.run', side_effect=self.create):
-            result = publish('sdk', version)
+            result = publish('swift-sdk', version)
             self.release = release
             return result
 
@@ -238,13 +238,13 @@ class PublicMaintenanceTests(unittest.TestCase):
         self.assertEqual((result['status'], result['base']), ('awaiting_review', 'release/1.4.x'))
         # The bot created release/1.4.x at the latest 1.4.* tag (1.4.1, not the pre-release), and the PR targets it.
         self.assertEqual(git(self.remote, 'rev-parse', 'release/1.4.x'), self.commits['1.4.1'])
-        pr = self.prs['publication/sdk/1.4.2']
+        pr = self.prs['publication/swift-sdk/1.4.2']
         self.assertEqual(pr['base']['ref'], 'release/1.4.x')
-        self.assertEqual(git(self.remote, 'rev-parse', 'publication/sdk/1.4.2^'), self.commits['1.4.1'])
+        self.assertEqual(git(self.remote, 'rev-parse', 'publication/swift-sdk/1.4.2^'), self.commits['1.4.1'])
         self.assertEqual(self.publish()['status'], 'awaiting_review')  # a re-run reuses the branch and the PR
         self.assertEqual(len(self.prs), 1)
         self.assertEqual(git(self.remote, 'tag', '--list', '1.4.2'), '')
-        merged = self.merge('publication/sdk/1.4.2', 'release/1.4.x')
+        merged = self.merge('publication/swift-sdk/1.4.2', 'release/1.4.x')
         result = self.publish()
         self.assertEqual((result['status'], result['branch'], result['publicationCommit']),
                          ('published', 'release/1.4.x', merged))
@@ -257,21 +257,21 @@ class PublicMaintenanceTests(unittest.TestCase):
         git(self.repo, 'fetch', '--quiet', '--tags', 'origin')
         releases = [{'tag_name': '1.4.2', 'draft': False}]
         with patch('publication_queue.find_pr', side_effect=self.find):
-            self.assertIsNone(state(self.repo, 'sdk', '1.4.2', 'a' * 40, releases, 'release/1.4.x'))
+            self.assertIsNone(state(self.repo, 'swift-sdk', '1.4.2', 'a' * 40, releases, 'release/1.4.x'))
             with self.assertRaises(RuntimeError):
-                state(self.repo, 'sdk', '1.4.2', 'a' * 40, releases)
+                state(self.repo, 'swift-sdk', '1.4.2', 'a' * 40, releases)
 
     def test_highest_maintenance_version_keeps_github_default(self):
         git(self.remote, 'update-ref', '-d', 'refs/tags/1.5.0')
         self.publish()
-        self.merge('publication/sdk/1.4.2', 'release/1.4.x')
+        self.merge('publication/swift-sdk/1.4.2', 'release/1.4.x')
         self.assertEqual(self.publish()['status'], 'published')
         self.assertIs(self.release.call_args.args[5], True)
 
     def test_line_without_a_public_tag_or_provenance_is_refused_without_writes(self):
         self.export('1.3.5')
         with self.assertRaisesRegex(ValueError, r'No public 1\.3\.\* tag'):
-            self.publish('1.3.5', 'release/sdk-1.3.x')
+            self.publish('1.3.5', 'release/swift-sdk-1.3.x')
         self.assertEqual(git(self.remote, 'for-each-ref', '--format=%(refname)', 'refs/heads'), 'refs/heads/main')
         self.assertEqual(self.prs, {})
 
@@ -289,25 +289,25 @@ class PublicMaintenanceTests(unittest.TestCase):
         git(clone, 'config', 'user.email', BOT_ID_EMAIL)
         with patch('reviewed_publication.find_pr', side_effect=self.find), \
              patch('reviewed_publication.run', side_effect=self.create):
-            return abandon('sdk', '1.4.2', clone, verify_tree, 'release/1.4.x')
+            return abandon('swift-sdk', '1.4.2', clone, verify_tree, 'release/1.4.x')
 
     def test_merged_maintenance_version_is_abandoned_on_its_base(self):
         self.publish()
-        merged = self.merge('publication/sdk/1.4.2', 'release/1.4.x')
+        merged = self.merge('publication/swift-sdk/1.4.2', 'release/1.4.x')
         status, revert = self.abandon()
         self.assertEqual((status, revert['base']['ref'], revert['head']['ref']),
-                         ('awaiting_review', 'release/1.4.x', 'abandon/sdk/1.4.2'))
-        self.assertEqual(git(self.remote, 'rev-parse', 'abandon/sdk/1.4.2^'), merged)
+                         ('awaiting_review', 'release/1.4.x', 'abandon/swift-sdk/1.4.2'))
+        self.assertEqual(git(self.remote, 'rev-parse', 'abandon/swift-sdk/1.4.2^'), merged)
         self.assertEqual(git(self.remote, 'rev-parse', 'release/1.4.x'), merged)  # changes only by review
-        self.assertEqual(json.loads(git(self.remote, 'show', 'abandon/sdk/1.4.2:.publication.json'))['version'],
+        self.assertEqual(json.loads(git(self.remote, 'show', 'abandon/swift-sdk/1.4.2:.publication.json'))['version'],
                          '1.4.1')
-        self.merge('abandon/sdk/1.4.2', 'release/1.4.x')
+        self.merge('abandon/swift-sdk/1.4.2', 'release/1.4.x')
         with patch('reviewed_publication.find_pr', side_effect=self.find):
-            self.assertEqual(abandon_state('sdk', '1.4.2', self.prs['publication/sdk/1.4.2'], 'release/1.4.x'),
+            self.assertEqual(abandon_state('swift-sdk', '1.4.2', self.prs['publication/swift-sdk/1.4.2'], 'release/1.4.x'),
                              'abandoned')
             # The same PR checked against main is not this version's publication: refused, never abandoned.
             with self.assertRaisesRegex(ValueError, 'identity or destination'):
-                abandon_state('sdk', '1.4.2', self.prs['publication/sdk/1.4.2'])
+                abandon_state('swift-sdk', '1.4.2', self.prs['publication/swift-sdk/1.4.2'])
         self.assertEqual(self.publish()['status'], 'abandoned')
         self.assertEqual(git(self.remote, 'tag', '--list', '1.4.2'), '')
 
@@ -317,8 +317,8 @@ class PublicMaintenanceTests(unittest.TestCase):
             commands.append([str(a) for a in args])
             return '[[]]' if args[:2] == ['gh', 'api'] else 'https://example.invalid/release'
         with patch('publish.run', side_effect=gh):
-            ensure_release('sdk', '1.4.2', 'b' * 40, None, lambda: 'Notes\n', False)
-            ensure_release('sdk', '1.5.1', 'b' * 40, None, lambda: 'Notes\n')
+            ensure_release('swift-sdk', '1.4.2', 'b' * 40, None, lambda: 'Notes\n', False)
+            ensure_release('swift-sdk', '1.5.1', 'b' * 40, None, lambda: 'Notes\n')
         self.assertEqual(commands[1][-1], '--latest=false')
         self.assertNotIn('--latest=false', commands[3])
 

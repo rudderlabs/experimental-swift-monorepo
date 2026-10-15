@@ -13,6 +13,7 @@ SOURCE_NAME = "experimental-swift-monorepo"
 CONSUMER_NAME = "experimental-swift-example-consumer-app"
 OWNER = "rudderlabs"
 RELEASE_BRANCH = "main"
+SDK = "swift-sdk"  # the core SDK's package key; integrations depend on it
 
 
 def run(args, cwd=ROOT, env=None):

@@ -52,11 +52,11 @@ class PackageExportTests(unittest.TestCase):
             (self.root / path).write_text(content)
         write_json(self.root / ".release-please-manifest.json", {"Packages/Core": "1.0.0", "Integrations/Kit": "1.0.0"})
         write_json(self.root / "release/packages.json", {"schemaVersion": 1, "packages": {
-            "sdk": {"path": "Packages/Core", "target": "Core", "repository": "experimental-rudder-sdk-swift",
+            "swift-sdk": {"path": "Packages/Core", "target": "Core", "repository": "experimental-rudder-sdk-swift",
                     "policies": {}, "resources": ["Resources"], "toolsVersion": "5.9",
                     "platforms": ["iOS 15", "macOS 12", "tvOS 15", "watchOS 8"]},
             "sprig": {"path": "Integrations/Kit", "target": "Kit", "repository": "experimental-integration-swift-sprig",
-                      "policies": {"Core": {"mode": "external", "package": "sdk"}}, "sdkMinimum": "1.0.0",
+                      "policies": {"Core": {"mode": "external", "package": "swift-sdk"}}, "sdkMinimum": "1.0.0",
                       "platforms": ["iOS 15"], "toolsVersion": "5.10"}}})
         shutil.copyfile(ROOT / "release/allowlist.json", self.root / "release/allowlist.json")
         sync_inventory(self.root)
@@ -81,7 +81,7 @@ class PackageExportTests(unittest.TestCase):
         _, text = self.export("sprig")
         self.assertTrue(text.startswith("// swift-tools-version: 5.10\n"))
         self.assertIn("    platforms: [.iOS(.v15)],\n", text)
-        _, text = self.export("sdk")
+        _, text = self.export("swift-sdk")
         self.assertIn("platforms: [.iOS(.v15), .macOS(.v12), .tvOS(.v15), .watchOS(.v8)],", text)
 
     def test_missing_platforms_fail_before_writes(self):
@@ -91,7 +91,7 @@ class PackageExportTests(unittest.TestCase):
         self.assertFalse((self.root.parent / "export-sprig").exists())
 
     def test_folder_resource_keeps_process_rule(self):
-        output, text = self.export("sdk")
+        output, text = self.export("swift-sdk")
         self.assertIn('resources: [.process("Resources")]', text)
         for name in ["PrivacyInfo.xcprivacy", "Nested/config.json"]:
             source = self.root / "Packages/Core/Sources/Core/Resources" / name
@@ -119,7 +119,7 @@ class PackageExportTests(unittest.TestCase):
         self.assertFalse((output / ".github/workflows").exists())
 
     def test_every_exported_file_has_one_transform(self):
-        for key in ("sdk", "sprig"):
+        for key in ("swift-sdk", "sprig"):
             output, _ = self.export(key)
             provenance = load(output / ".publication.json")
             transforms = {f["output"]: f["transform"] for f in provenance["copiedFiles"]}
@@ -136,9 +136,9 @@ class PackageExportTests(unittest.TestCase):
                 self.assertEqual((output / entry["output"]).read_bytes(), (self.root / entry["source"]).read_bytes())
 
     def test_resource_inventory_compares_relative_paths(self):
-        self.edit(lambda p: p["sdk"].update(resources=["Resources/PrivacyInfo.xcprivacy"]))
+        self.edit(lambda p: p["swift-sdk"].update(resources=["Resources/PrivacyInfo.xcprivacy"]))
         with self.assertRaisesRegex(ValueError, "Resources differ"):
-            self.export("sdk")
+            self.export("swift-sdk")
 
     def test_from_requirement_round_trips_and_branch_is_rejected(self):
         expected = {"kind": "upToNextMajor", "lower": "4.29.0", "upper": "5.0.0"}

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       branch:
-        description: Maintenance branch release/<key>-X.Y.x to release (dispatch on main); empty releases main
+        description: Maintenance branch to release, e.g. release/<package>-1.4.x (run from main); leave empty for main
         type: string
         default: ''
 permissions:
@@ -63,12 +63,12 @@ jobs:
           RELEASE_PLEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
         run: python3 scripts/release_plan.py from-outputs
   sdk:
-    name: publish (sdk)
+    name: publish (swift-sdk)
     needs: [intent]
     if: needs.intent.outputs.sdk != 'null'
     uses: ./.github/workflows/publish.yml
     with:
-      package: sdk
+      package: swift-sdk
       version: ${{ fromJSON(needs.intent.outputs.sdk).version }}
       source_sha: ${{ fromJSON(needs.intent.outputs.sdk).sha }}
     secrets:

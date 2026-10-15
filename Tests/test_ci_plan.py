@@ -27,7 +27,7 @@ WORKFLOW = (ROOT / ".github/workflows/ci.yml").read_text()
 
 class CiPlanTests(unittest.TestCase):
     """D34: a PR or push checks what it affects."""
-    every = ["sdk", "sprig", "firebase"]
+    every = ["swift-sdk", "sprig", "firebase"]
     sprig = "Integrations/Sprig/Sources/DemoSprig/DemoSprig.swift"
 
     @classmethod
@@ -49,13 +49,13 @@ class CiPlanTests(unittest.TestCase):
     def test_sdk_change_also_tests_its_dependents_but_exports_only_the_sdk(self):
         # Exported integrations build against the published SDK tag, so only their tests see the local SDK.
         self.assertEqual(self.plan("Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift"),
-                         {"test": self.every, "export": ["sdk"], "policy": False})
+                         {"test": self.every, "export": ["swift-sdk"], "policy": False})
 
     def test_pre_push_tests_only_the_changed_packages(self):
         # The pre-push hook leaves the dependents to CI; shared build inputs still select every package.
         sdk = "Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift"
         self.assertEqual(ci_plan([sdk], self.root, with_dependents=False),
-                         {"test": ["sdk"], "export": ["sdk"], "policy": False})
+                         {"test": ["swift-sdk"], "export": ["swift-sdk"], "policy": False})
         self.assertEqual(ci_plan(["Package.swift", sdk], self.root, with_dependents=False)["test"], self.every)
 
     def test_dependents_come_from_the_inventory_so_a_new_integration_needs_no_edit(self):
@@ -72,7 +72,7 @@ class CiPlanTests(unittest.TestCase):
             allowlist["repositories"]["kit"] = "kit"
             write_json(root / "release/allowlist.json", allowlist)
             # write_json sorts the allowlist, so the plan lists keys alphabetically here.
-            self.assertEqual(ci_plan(["Packages/DemoSDK/A.swift"], root)["test"], ["firebase", "kit", "sdk", "sprig"])
+            self.assertEqual(ci_plan(["Packages/DemoSDK/A.swift"], root)["test"], ["firebase", "kit", "sprig", "swift-sdk"])
             self.assertEqual(ci_plan(["Integrations/Sprig/A.swift"], root)["test"], ["kit", "sprig"])
             self.assertEqual(ci_plan(["Integrations/Kit/A.swift"], root)["test"], ["kit"])
 
@@ -177,12 +177,12 @@ class CiPlanTests(unittest.TestCase):
             first = commit(root, "test: baseline")
             sdk = root / "Packages/DemoSDK/Sources/DemoSDK/DemoSDK.swift"
             sdk.write_text(sdk.read_text() + "// change\n")
-            before = commit(root, "fix(sdk): change")
+            before = commit(root, "fix(swift-sdk): change")
             (root / self.sprig).write_text((root / self.sprig).read_text() + "// change\n")
             commit(root, "chore(release): sprig")
             # Only the pushed commits count: the earlier SDK change does not select its dependents again.
             self.assertEqual(push_plan(before, root), {"test": ["sprig"], "export": ["sprig"], "policy": False})
-            self.assertEqual(push_plan(first, root), {"test": self.every, "export": ["sdk", "sprig"], "policy": False})
+            self.assertEqual(push_plan(first, root), {"test": self.every, "export": ["swift-sdk", "sprig"], "policy": False})
 
     def test_push_with_an_unknown_previous_commit_checks_everything(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -199,7 +199,7 @@ class CiPlanTests(unittest.TestCase):
 
 class InventoryPlanTests(unittest.TestCase):
     """A release/packages.json change selects only the packages whose entry changed (real git history)."""
-    every = ["firebase", "sdk", "sprig"]  # write_json sorts the allowlist, so plans list keys alphabetically here.
+    every = ["firebase", "sprig", "swift-sdk"]  # write_json sorts the allowlist, so plans list keys alphabetically here.
     inventory = "release/packages.json"
 
     def setUp(self):
@@ -234,8 +234,8 @@ class InventoryPlanTests(unittest.TestCase):
         self.assertEqual(plan, {"test": ["firebase"], "export": ["firebase"], "policy": True})
 
     def test_sdk_entry_change_tests_its_dependents_but_exports_only_the_sdk(self):
-        plan = self.change(lambda d: d["packages"]["sdk"]["platforms"].append("tvOS 15"))
-        self.assertEqual(plan, {"test": self.every, "export": ["sdk"], "policy": True})
+        plan = self.change(lambda d: d["packages"]["swift-sdk"]["platforms"].append("tvOS 15"))
+        self.assertEqual(plan, {"test": self.every, "export": ["swift-sdk"], "policy": True})
 
     def test_added_entry_selects_the_new_package(self):
         entry = {"path": "Integrations/Kit", "target": "Kit", "repository": "kit", "policies": {}}
