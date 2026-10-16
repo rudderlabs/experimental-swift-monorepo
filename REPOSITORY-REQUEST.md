@@ -10,14 +10,13 @@ The local source, consumer, and generated package preparation already exists und
 
 | Repository | Visibility | Purpose | After review |
 | --- | --- | --- | --- |
-| `experimental-swift-monorepo` | Internal | Canonical demo source, independent release intent, exporter, publisher | Archive or delete after evidence review |
+| `experimental-swift-monorepo` | Public | Canonical demo source, independent release intent, exporter, publisher | Archive or delete after evidence review |
 | `experimental-rudder-sdk-swift` | Public | Generated SDK fixture and plain semantic version tags | Archive |
 | `experimental-integration-swift-sprig` | Public | Generated first integration | Archive |
 | `experimental-integration-swift-firebase` | Public | Generated second integration with public vendor dependency | Archive |
 | `experimental-swift-example-consumer-app` | Public | Independent SwiftPM and iOS consumer | Archive |
 
-Internal visibility for the experimental source monorepo replaces the earlier Private proposal.
-This is a temporary choice while validating the setup. The architecture also supports a public source monorepo.
+The experimental source monorepo is Public (internal use); outside issues and pull requests are welcome there.
 The production source monorepo is expected to be Public, with existing public SDK and integration publication repositories retained.
 No Private repository is requested for this experiment.
 
@@ -39,8 +38,8 @@ Do not add these packages to a Swift registry or the Swift Package Index.
 10. Allow the publisher App to create and update publication `main`; verify the approved publisher route under inherited protection.
     In each publication repository, add a `release/*` ruleset: no deletion, no force push, PR required; the release bot may create branches.
 11. Protect full semantic version tags against update and deletion.
-12. Disable Issues and Discussions in the three generated publication repositories.
-    In the public repositories, set Issues and Pull requests to "Collaborators only".
+12. In the three generated publication repositories, disable Discussions and set Issues and Pull requests to "Collaborators only"; outside issues and PRs go to the source monorepo (its CONTRIBUTING.md).
+    The release bot (GitHub App) must still open publish PRs there: verify a bot publish PR still opens before enabling the setting.
 13. Keep `EXPERIMENTAL_RELEASES_ENABLED` unset until remote preflight passes.
 
 The App must not have repository administration permission or installation access to production repositories.

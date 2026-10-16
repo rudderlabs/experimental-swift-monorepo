@@ -103,15 +103,15 @@ class PackageExportTests(unittest.TestCase):
         output, _ = self.export("sprig")
         provenance = load(output / ".publication.json")
         self.assertEqual((output / ".github/CODEOWNERS").read_text(), "* @rudderlabs/sdk_team\n")
-        # The monorepo is internal: issues and PRs go to the public repository, maintainers sync merged PRs back.
+        # The public repositories accept no issues or PRs: both files send contributors to the monorepo.
         contributing = (output / "CONTRIBUTING.md").read_text()
-        self.assertIn("Issues and pull requests are welcome in this repository.", contributing)
-        self.assertIn("open a pull request here", contributing)
+        self.assertIn("It does not accept issues or pull requests.", contributing)
+        self.assertIn("open a pull request on the monorepo", contributing)
         readme = (output / "README.md").read_text()
         self.assertTrue(readme.startswith("# Fixture\n\n## Report issues / contribute\n"))
-        self.assertIn("Issues and pull requests are welcome in this repository.", readme)
+        self.assertIn("it does not accept issues or pull requests", readme)
         for text in (contributing, readme):
-            self.assertNotIn("experimental-swift-monorepo", text)
+            self.assertIn("https://github.com/rudderlabs/experimental-swift-monorepo", text)
             self.assertNotIn("not merged", text)
         for path in ("CONTRIBUTING.md", ".github/CODEOWNERS", "README.md"):
             self.assertEqual(provenance["fileHashes"][path], hashlib.sha256((output / path).read_bytes()).hexdigest())

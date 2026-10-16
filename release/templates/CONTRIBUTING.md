@@ -1,8 +1,10 @@
 # Contributing
 
-Issues and pull requests are welcome in this repository.
+This repository only publishes releases. It does not accept issues or pull requests.
 
-- Report a bug or request a feature: open an issue here.
-- Change the code: open a pull request here.
+This package is developed in the monorepo [{owner}/{source}](https://github.com/{owner}/{source}). Issues and pull requests are welcome there:
 
-Maintainers develop this package in an internal monorepo and publish it here. They review your pull request here, carry the merged change over to the monorepo and credit you; it ships in the next release.
+- Report a bug or request a feature: [open an issue]({issues}) and pick `{package}` as the package.
+- Change the code: open a pull request on the monorepo. Title it as a Conventional Commit, for example `fix({package}): handle empty config`. See its [CONTRIBUTING.md](https://github.com/{owner}/{source}/blob/main/CONTRIBUTING.md).
+
+Maintainers review your change there; it ships in this package's next release.

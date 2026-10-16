@@ -123,7 +123,7 @@ class CiPlanTests(unittest.TestCase):
         self.assertNotIn("scripts/ci_plan.py", build)
         # The release flow is not a package build input: a release-script change runs only the Python tests.
         for path in ["scripts/publish.py", "scripts/reviewed_publication.py", "scripts/publication_queue.py",
-                     "scripts/maintenance_branch.py", "scripts/release_notes.py", "scripts/sync_back.py"]:
+                     "scripts/maintenance_branch.py", "scripts/release_notes.py"]:
             self.assertNotIn(path, build)
             self.assertEqual(self.plan(path), {"test": [], "export": [], "policy": True}, path)
         # If package_ci.py imported ci_plan.py, every plan change would select every package again.
