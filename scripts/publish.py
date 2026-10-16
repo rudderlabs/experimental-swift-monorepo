@@ -30,23 +30,13 @@ def publication_lock(mirror_root, name):
         yield
 
 
-def verify_tree(repo, export_hashes=None):
-    """The tree's provenance. Drift is accepted only when `export_hashes()` (the new export's fileHashes) already
-    holds every differing file as is: an outside edit that was synced back (scripts/sync_back.py)."""
+def verify_tree(repo):
+    """The tree's provenance; any file that differs from the recorded export is manual drift."""
     provenance = load(repo / ".publication.json")
     published, current = provenance["fileHashes"], file_hashes(repo)
-    drift = {p for p in published.keys() | current.keys() if published.get(p) != current.get(p)}
-    if drift and not (export_hashes and synced(drift, current, export_hashes)):
+    if any(published.get(p) != current.get(p) for p in published.keys() | current.keys()):
         raise ValueError("Publication repository contains manual drift")
     return provenance
-
-
-def synced(drift, current, export_hashes):
-    try:
-        expected = export_hashes()
-    except (ValueError, RuntimeError):
-        return False  # Without an export nothing proves the edit came back; the drift error stands.
-    return all(current.get(p) == expected.get(p) for p in drift)
 
 
 def tag_exists(repo, version):
@@ -194,8 +184,7 @@ def publish(key, version, mirror_root=None, root=ROOT, interrupt=None, mode="nor
             git(repo, "checkout", "-B", base, start or publication_ref)
             state = layout(repo)
             if state == "generated":
-                # A separate export: `stage` must stay empty for prepare().
-                verify_tree(repo, lambda: export(key, version, temp / "synced-check", root)["fileHashes"])
+                verify_tree(repo)
         if mirror_root is None:
             if not (has_branch or start):
                 raise ValueError(f"Reviewed publication requires a seeded {base} branch")

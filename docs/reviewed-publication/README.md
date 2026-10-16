@@ -77,7 +77,9 @@ It records the built platforms and the resolved `Package.resolved` pins.
 - `mode=takeover` opens one bot PR on `takeover/<key>/<version>` at the existing public tag `<version>`. It removes every non-generated file and adds the export. Before the PR it checks `Sources/` byte-identical to that tag (only a missing `Version.swift` may be added) and `Package.swift` semantically equal with `swift package dump-package` (products, targets, platforms, dependency requirements). The PR body lists the removed files and the allowed differences. No tag or Release is created; after merge the package publishes normally.
 - If `.github/workflows` exists, takeover refuses with "Remove .github/workflows by PR first" and the package stays `awaiting_takeover` (D31). The bot never writes or deletes workflow files and needs no Workflows permission.
 
-Every export adds a generated CONTRIBUTING.md, `.github/CODEOWNERS` (`* @rudderlabs/sdk_team`) and a README block (`release/templates/`) that welcome issues and pull requests in the public repository; maintainers carry merged public PRs back to this monorepo ([Sync back an outside PR](#sync-back-an-outside-pr)). All are hashed in provenance; `copiedFiles` records a `transform` per file (`copy`, `vendored-strip-import`, `generated`) for reverse sync.
+Every export adds a generated CONTRIBUTING.md, `.github/CODEOWNERS` (`* @rudderlabs/sdk_team`) and a README block (`release/templates/`) that send issues and pull requests to this monorepo. All are hashed in provenance; `copiedFiles` records a `transform` per file (`copy`, `vendored-strip-import`, `generated`).
+
+Outside contributions come to this monorepo only: issues and pull requests for every package are welcome here ([CONTRIBUTING.md](../../CONTRIBUTING.md)). The public package repositories accept none (Pull requests and Issues set to "Collaborators only"), so the public repository changes only through bot publish PRs.
 
 **Set Current Release Version** (`anchor-package.yml`; manual: package, version, full `main` SHA) validates the package against the allowlist and package list, the SemVer version against `version.txt` at that commit, and the SHA on `main`, then creates the plain tag `<component>-<version>`. It also re-anchors a renamed component at its last release commit ([Core SDK key rename](#core-sdk-key-rename-sdk--swift-sdk-once-around-the-merge)). It creates no GitHub Release, so the completion queue never sees it, and no workflow starts on a tag.
 
@@ -153,17 +155,9 @@ Release Please finds a package's last release as the GitHub Release or tag `<com
 5. The next SDK fix (`fix(swift-sdk): …`, changing `Packages/RudderStackAnalytics/`) opens `chore(release): swift-sdk 1.5.1` on `release-please--branches--main--components--swift-sdk`, with only that change in the CHANGELOG and the compare link `swift-sdk-1.5.0...swift-sdk-1.5.1`. Merging it tags `swift-sdk-1.5.1` and publishes the public `1.5.1` as usual (publish PR `publication/swift-sdk/1.5.1`, then Tag & Release Packages).
 
 If an SDK release PR opened before the anchor (step 1 skipped), close it without merging; the run after the anchor builds the right one.
-Optional: rename the existing label so old issues keep it: `gh label edit "pkg:sdk" --name "pkg:swift-sdk" --description "Package swift-sdk (Packages/RudderStackAnalytics)" --repo rudderlabs/experimental-swift-monorepo`. Otherwise Public Activity creates `pkg:swift-sdk` when it first needs it.
+Optional: rename the existing label so old issues keep it: `gh label edit "pkg:sdk" --name "pkg:swift-sdk" --description "Package swift-sdk (Packages/RudderStackAnalytics)" --repo rudderlabs/experimental-swift-monorepo`.
 
 Legacy line `release/sdk-1.4.x`: leave it as it is (no rename, no new tags; its 1.4.3 is public and nothing is pending). It keeps its own `sdk` config, so its Release Please and publish PR steps would still run from its own files, but Tag & Release Packages runs from `main` and only knows `swift-sdk-*` releases: a new `sdk-1.4.4` would never be tagged publicly. Treat the line as closed. Cut later maintenance lines from a `swift-sdk-*` tag on a commit that has the rename (1.5.1 or later), never from `swift-sdk-1.5.0`, whose commit still has the `sdk` files.
-
-### Public activity notifications
-
-The **Public Activity** workflow runs daily at 09:00 IST (03:30 UTC) and can be started at any time with Actions → Public Activity → Run workflow. It looks at the public package repositories and opens an issue in this monorepo for new outside activity, labelled `pkg:<key>` for the package and `public-issue` (a public issue), `public-pr` (a public pull request) or `sync-back-needed` (a merged public change that this monorepo does not have yet). Triage those issues like any other: answer on the public repository, and close the monorepo issue when done.
-
-### Sync back an outside PR
-
-After a public pull request is merged, bring the change into this monorepo, the source of truth; until then the public repository differs from its last export and the next publication stops on the drift check. Run Actions → **Sync Back Public Changes** → Run workflow, picking `package` from the list (for example `sprig`). It opens a monorepo PR with the public changes that credits the outside author. Generated and vendored files (CONTRIBUTING.md, the README block, `Package.swift`, vendored shared code) cannot be copied back as-is: the PR flags them, and a person makes the matching change in the real source (`release/templates/`, `release/packages.json`, `Shared/`). Review it like any change; it ships with the package's next release.
 
 ### Discard an unpublished version
 
