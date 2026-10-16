@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from common import ROOT, CONSUMER_NAME, OWNER, SOURCE_NAME, allowlist, load, write_json
+from common import ROOT, OWNER, SOURCE_NAME, allowlist, load, write_json
 
 
 def github(endpoint, paginate=False):
@@ -40,7 +40,7 @@ def alert_records(repository, pages):
 
 
 def collect(scope, reader=github):
-    allowed = {f"{OWNER}/{name}" for name in [SOURCE_NAME, CONSUMER_NAME, *allowlist().values()]}
+    allowed = {f"{OWNER}/{name}" for name in [SOURCE_NAME, *allowlist().values()]}
     names = [item["name"] for item in scope["repositories"]]
     if len(names) != len(set(names)) or any(name not in allowed for name in names):
         raise ValueError("Monitoring scope must contain unique approved experimental repositories")

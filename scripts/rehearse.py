@@ -9,7 +9,6 @@ bare repository or to a path that does not exist.
 import argparse
 import contextlib
 from datetime import datetime, timezone
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -20,7 +19,7 @@ import time
 from unittest.mock import patch
 from urllib.parse import parse_qsl
 
-from common import (ROOT, CONSUMER_NAME, OWNER, RELEASE_BRANCH, SOURCE_NAME, allowlist, anonymous_env, commit, git,
+from common import (ROOT, OWNER, RELEASE_BRANCH, SOURCE_NAME, allowlist, anonymous_env, commit, git,
                     inventory, load, run, swift_options, url, write_json)
 from anchor import anchor
 from maintenance_branch import create as create_maintenance_branch, source_line
@@ -31,6 +30,7 @@ from publication_queue import queue
 from dependency_policy import markers as dependency_markers
 from release_plan import affected
 from reviewed_publication import BOT, WORKFLOWS
+import verify_public_customer
 
 FIXTURE = ROOT / 'Tests/Fixtures/demo'
 NAMES = allowlist()
@@ -108,10 +108,6 @@ NOT_MODELED = ('GitHub Actions, App permissions, rulesets, environments, Release
                'network access, reverse sync (ingest)')
 
 
-# Last consumer commit built on the demo fixture packages (before the real-products change).
-DEMO_CONSUMER_COMMIT = 'b1424d19e02599478ba2807be9a30f15bab92fb7'
-
-
 class RehearsalError(Exception):
     pass
 
@@ -119,13 +115,6 @@ class RehearsalError(Exception):
 def check(condition, message):
     if not condition:
         raise AssertionError(message)
-
-
-def module(path, name):
-    spec = importlib.util.spec_from_file_location(name, path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
 
 
 def github(args):
@@ -456,19 +445,24 @@ class Lab:
         check(pins[NAMES[key]].get('version') == version, f'{key} resolved {pins[NAMES[key]]}')
         return {'package': key, 'version': version, 'pins': {k: v.get('version') for k, v in pins.items()}}
 
-    def ios_consumer(self, versions):
-        """The sibling consumer template (CLI and iOS Simulator app) at the given versions, through local mirrors."""
-        folder = self.dir / 'consumers' / 'ios-template'
-        run(['git', 'clone', '--quiet', '--no-local', self.template, folder])
-        # The rehearsal publishes the demo fixture packages; the consumer's main now uses the real products.
-        run(['git', '-C', folder, 'checkout', '--quiet', '--detach', DEMO_CONSUMER_COMMIT])
-        module(folder / 'scripts/dependencies.py', 'consumer_dependencies').render(
-            folder, [f'{k}={v}' for k, v in versions.items()])
-        self.mirror(folder, allowlisted=False)
-        evidence = module(folder / 'scripts/verify.py', 'consumer_verify').verify(folder, self.remotes, True)
-        shutil.rmtree(folder / 'DerivedData', ignore_errors=True)
-        check(evidence['runtime'].get('iOSSimulatorBuild') == 'passed', 'iOS consumer build did not pass')
-        return evidence['runtime']
+    def ios_consumer(self, key, version):
+        """The post-publish customer check's generated package (one import, exact version) built with xcodebuild on
+        each checked platform the package supports; system Git resolves through the local repositories."""
+        package = inventory(self.source)[key]
+        folder = self.dir / 'consumers' / f'xcode-{key}-{version}'
+        verify_public_customer.write_consumer(folder, package, url(key), version)
+        built = verify_public_customer.platforms(package)
+        with tempfile.TemporaryDirectory(prefix='rehearsal-xcode-consumer-') as state:
+            # A fresh home: the local Swift Collections stand-in must not meet the real tag's recorded fingerprint.
+            home = Path(state) / 'home'
+            home.mkdir()
+            env = {**self.offline_env(), 'HOME': str(home), 'CFFIXED_USER_HOME': str(home)}
+            for platform in built:
+                verify_public_customer.build(folder, platform, Path(state), env)
+        pins = {p['identity']: p['state'] for p in load(folder / 'Package.resolved')['pins']}
+        check(pins[NAMES[key]].get('version') == version, f'{key} resolved {pins[NAMES[key]]}')
+        return {'package': key, 'version': version, 'platforms': built,
+                'pins': {k: v.get('version') for k, v in pins.items()}}
 
     # Setup.
     def setup(self):
@@ -693,9 +687,11 @@ def step_9(lab):
     lab.proved('one package at a time, fresh SwiftPM state, offline mirrors: SDK 0.1.0, the pre-monorepo '
                'Sprig 0.1.1 tag and Firebase 0.1.0 resolve and run')
     if lab.ios:
-        # Firebase 0.1.0 needs SDK 0.2.0, so the all-in-one app takes the oldest set that resolves together.
-        lab.records['iosConsumer'] = lab.ios_consumer({'sdk': '0.2.0', 'sprig': '0.1.1', 'firebase': '0.1.0'})
-        lab.proved('consumer template CLI and iOS Simulator app build with SDK 0.2.0, Sprig 0.1.1, Firebase 0.1.0')
+        # Firebase 0.1.0 needs SDK 0.2.0; each check resolves on its own, like the post-publish customer check.
+        lab.records['iosConsumer'] = [lab.ios_consumer(key, version) for key, version in
+                                      (('swift-sdk', '0.2.0'), ('sprig', '0.1.1'), ('firebase', '0.1.0'))]
+        lab.proved('the customer check package builds with xcodebuild on each supported platform (iOS Simulator, '
+                   'macOS): SDK 0.2.0, Sprig 0.1.1, Firebase 0.1.0')
 
 
 def step_10(lab):
@@ -770,21 +766,17 @@ STEPS = [
 ]
 
 
-def rehearse(ios=False, consumer_template=None, base=None, quick=False, through=len(STEPS)):
+def rehearse(ios=False, base=None, quick=False, through=len(STEPS)):
     """Run steps 0..`through` in a new `<base>/<timestamp>/` folder (default `.lab`); earlier runs are never touched."""
     base = Path(base or ROOT / '.lab').resolve()
     directory = base / datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     directory.mkdir(parents=True)
     write_json(base / 'latest.json', {'path': str(directory)})
-    if ios:
-        consumer_template = Path(consumer_template or ROOT.parent / CONSUMER_NAME)
-        if not (consumer_template / 'scripts/verify.py').exists():
-            raise RehearsalError(f'--ios needs the consumer template checkout at {consumer_template}')
     # The configured Git identity authors developer and reviewer commits; the modeled App bot authors publication.
     ident = git(ROOT, 'var', 'GIT_AUTHOR_IDENT')
     identity = (ident.split(' <')[0], ident.split(' <')[1].split('>')[0])
     lab = Lab(directory, quick)
-    lab.ios, lab.template = ios, consumer_template
+    lab.ios = ios
     lab.records.update(through=through, tool=ROOT.as_posix(), toolCommit=git(ROOT, 'rev-parse', 'HEAD'),
                        swift=run(['swift', '--version']).splitlines()[0],
                        xcode=' '.join(run(['xcodebuild', '-version']).split()))
@@ -814,13 +806,12 @@ if __name__ == '__main__':
             raise SystemExit(1)
         raise SystemExit(0)
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('--ios', action='store_true', help='also build the sibling consumer template for iOS Simulator')
-    parser.add_argument('--consumer-template', type=Path)
+    parser.add_argument('--ios', action='store_true', help='also run the customer check package with xcodebuild (iOS Simulator, macOS)')
     parser.add_argument('--quick', action='store_true', help='skip the xcodebuild platform builds in the publisher')
     parser.add_argument('--through', type=int, choices=range(len(STEPS) + 1), default=len(STEPS),
                         help='stop after this step')
     args = parser.parse_args()
     try:
-        rehearse(args.ios, args.consumer_template, quick=args.quick, through=args.through)
+        rehearse(args.ios, quick=args.quick, through=args.through)
     except RehearsalError as error:
         raise SystemExit(f'Rehearsal failed: {error}')

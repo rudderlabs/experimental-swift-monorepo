@@ -5,7 +5,7 @@ Prepared: 2026-09-06. Status: creation request draft; visibility recorded in SDK
 Create the following repositories in `rudderlabs` for the [experimental SwiftPM publication proof](https://linear.app/rudderstack/issue/SDK-5388).
 All five repositories have been created as Public, with default `main`.
 The initial source push succeeded. Use `main` for CI, Release Please, and generated publications.
-Source and consumer updates require reviewed PRs. Repeated publication updates require an explicitly approved publisher App bypass or a reviewed update route; Contents write does not bypass the inherited rule.
+Source updates require reviewed PRs. Repeated publication updates require an explicitly approved publisher App bypass or a reviewed update route; Contents write does not bypass the inherited rule.
 The local source, consumer, and generated package preparation already exists under `/Users/denis/git/swift-monorepo-spm-lab`.
 
 | Repository | Visibility | Purpose | After review |
@@ -42,7 +42,6 @@ Do not add these packages to a Swift registry or the Swift Package Index.
 12. Disable Issues and Discussions in the three generated publication repositories.
     In the public repositories, set Issues and Pull requests to "Collaborators only".
 13. Keep `EXPERIMENTAL_RELEASES_ENABLED` unset until remote preflight passes.
-14. Keep consumer `EXPERIMENTAL_PACKAGES_AVAILABLE` unset until all baseline tags exist.
 
 The App must not have repository administration permission or installation access to production repositories.
 A local Git test cannot prove these controls. Record the actual installation scope and ruleset settings during remote validation.

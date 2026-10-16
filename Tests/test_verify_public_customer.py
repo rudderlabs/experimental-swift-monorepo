@@ -1,11 +1,9 @@
-"""The customer check must call the consumer's dependencies.py with arguments it accepts."""
+"""The customer check builds a generated consumer on the checked platforms each package supports."""
 import json
 import os
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
-import textwrap
 import unittest
 from unittest.mock import patch
 
@@ -13,112 +11,92 @@ os.environ["GIT_CONFIG_GLOBAL"] = os.devnull
 os.environ["GIT_CONFIG_NOSYSTEM"] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import verify_public_customer
-from verify_public_customer import consumer_key, dependency_args
+from common import inventory
+from verify_public_customer import platforms, write_consumer
 
-# The consumer's interface: `--set` is repeatable and takes exactly one KEY=X.Y.Z per flag.
-CONSUMER_DEPENDENCIES = textwrap.dedent('''\
-    import argparse, json
-    from pathlib import Path
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--set", action="append", default=[])
-    parser.add_argument("--branch", action="append", default=[])
-    args = parser.parse_args()
-    path = Path("dependencies.json")
-    deps = json.loads(path.read_text())
-    for update in args.set:
-        key, version = update.split("=", 1)
-        deps[key]["version"] = version
-    path.write_text(json.dumps(deps))
-''')
-REPOS = (('sdk', 'experimental-rudder-sdk-swift'), ('sprig', 'experimental-integration-swift-sprig'),
-         ('firebase', 'experimental-integration-swift-firebase'))
-CONSUMER_VERIFY = textwrap.dedent('''\
-    import json
-    from pathlib import Path
-    deps = json.loads(Path("dependencies.json").read_text())
-    print(json.dumps({"runtime": {k: d["version"] for k, d in deps.items()}, "transport": "anonymous-public-git"}))
-''')
+PACKAGES = inventory()
+URL = 'https://github.com/rudderlabs/experimental-integration-swift-sprig.git'
 
 
-class DependencyArgsTests(unittest.TestCase):
-    """Selections use the consumer's keys (`sdk`), not the monorepo package keys (`swift-sdk`)."""
+class PlatformsTests(unittest.TestCase):
 
-    def test_one_set_flag_per_selection(self):
-        self.assertEqual(dependency_args('sprig', '1.0.1', 'sdk', '1.0.0', '1.2.1'),
-                         ['--set', 'sprig=1.0.1', '--set', 'sdk=1.2.1'])
+    def test_only_checked_platforms_the_package_supports(self):
+        self.assertEqual(platforms(PACKAGES['sprig']), ['iOS'])
+        self.assertEqual(platforms(PACKAGES['firebase']), ['iOS', 'macOS'])
+        self.assertEqual(platforms(PACKAGES['swift-sdk']), ['iOS', 'macOS'])
 
-    def test_no_sdk_raise_when_consumer_already_meets_minimum(self):
-        self.assertEqual(dependency_args('firebase', '1.1.3', 'sdk', '1.4.1', '1.0.0'), ['--set', 'firebase=1.1.3'])
-        self.assertEqual(dependency_args('sprig', '1.0.1', 'sdk', '1.2.1', '1.2.1'), ['--set', 'sprig=1.0.1'])
-
-    def test_sdk_release_selects_only_itself(self):
-        self.assertEqual(dependency_args('sdk', '1.4.1', 'sdk', '1.0.0', None), ['--set', 'sdk=1.4.1'])
-        self.assertEqual(dependency_args('sdk', '1.4.1', 'sdk', '1.0.0', '1.2.1'), ['--set', 'sdk=1.4.1'])
-
-    def test_versions_compare_numerically(self):
-        self.assertEqual(dependency_args('sprig', '1.0.1', 'sdk', '1.10.0', '1.2.1'), ['--set', 'sprig=1.0.1'])
+    def test_checked_order_not_inventory_order(self):
+        self.assertEqual(platforms({'platforms': ['tvOS 15', 'macOS 12', 'iOS 15']}), ['iOS', 'macOS'])
 
 
-class ConsumerKeyTests(unittest.TestCase):
-    DEPENDENCIES = {'sdk': {'url': 'https://github.com/rudderlabs/experimental-rudder-sdk-swift.git'},
-                    'sprig': {'url': 'https://github.com/rudderlabs/experimental-integration-swift-sprig'}}
-
-    def test_consumer_key_comes_from_the_repository_url(self):
-        self.assertEqual(consumer_key(self.DEPENDENCIES, 'experimental-rudder-sdk-swift'), 'sdk')
-        self.assertEqual(consumer_key(self.DEPENDENCIES, 'experimental-integration-swift-sprig'), 'sprig')
-
-    def test_missing_or_ambiguous_repository_is_refused(self):
-        with self.assertRaisesRegex(ValueError, 'no single dependency'):
-            consumer_key(self.DEPENDENCIES, 'experimental-integration-swift-firebase')
-        with self.assertRaisesRegex(ValueError, 'no single dependency'):
-            consumer_key({**self.DEPENDENCIES, 'core': self.DEPENDENCIES['sdk']}, 'experimental-rudder-sdk-swift')
-
-
-class VerifyCommandTests(unittest.TestCase):
-    """verify() against a local consumer whose dependencies.py has the real argument contract."""
+class WriteConsumerTests(unittest.TestCase):
 
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
-        self.consumer = self.root / 'consumer'
-        (self.consumer / 'scripts').mkdir(parents=True)
-        (self.consumer / 'scripts/dependencies.py').write_text(CONSUMER_DEPENDENCIES)
-        (self.consumer / 'scripts/verify.py').write_text(CONSUMER_VERIFY)
-        # The consumer's own keys; the SDK's differs from its monorepo key and is matched by repository URL.
-        (self.consumer / 'dependencies.json').write_text(json.dumps(
-            {key: {'url': f'https://github.com/rudderlabs/{name}.git', 'version': '1.0.0'} for key, name in REPOS}))
-        (self.consumer / 'Package.resolved').write_text('{"pins": []}')
-        lock = self.consumer / 'PublicationDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm'
-        lock.mkdir(parents=True)
-        (lock / 'Package.resolved').write_text('{"pins": []}')
-        subprocess.run(['git', 'init', '-q', self.consumer], check=True)
-        subprocess.run(['git', '-C', self.consumer, '-c', 'user.name=t', '-c', 'user.email=t@example.com',
-                        'commit', '-q', '--allow-empty', '-m', 'init'], check=True)
-        self.destination = self.root / 'evidence'
-        self.destination.mkdir()
+        self.folder = Path(temp.name) / 'consumer'
 
-    def verify(self, key, version):
-        packages = {'swift-sdk': {}, 'sprig': {'sdkMinimum': '1.2.1'}, 'firebase': {'sdkMinimum': '1.0.0'}}
-        for (_, name), package in zip(REPOS, packages.values()):
-            package['repository'] = name
-        with patch.object(verify_public_customer, 'inventory', return_value=packages):
-            return verify_public_customer.verify(key, version, self.destination, consumer_source=self.consumer)
+    def test_manifest_pins_the_exact_public_version(self):
+        write_consumer(self.folder, PACKAGES['firebase'], URL.replace('sprig', 'firebase'), '1.1.5')
+        manifest = (self.folder / 'Package.swift').read_text()
+        self.assertTrue(manifest.startswith('// swift-tools-version: 5.9\n'))
+        self.assertIn('platforms: [.iOS(.v15), .macOS(.v12)]', manifest)
+        self.assertIn('.package(url: "https://github.com/rudderlabs/experimental-integration-swift-firebase.git", '
+                      'exact: "1.1.5")', manifest)
+        self.assertIn('.product(name: "RudderIntegrationFirebase", package: "experimental-integration-swift-firebase")',
+                      manifest)
+        self.assertNotIn('tvOS', manifest)
+        self.assertEqual((self.folder / 'Sources/Consumer/Consumer.swift').read_text(), 'import RudderIntegrationFirebase\n')
 
-    def test_integration_upgrade_with_sdk_minimum_is_accepted_by_the_consumer(self):
-        result = self.verify('sprig', '1.0.1')
-        self.assertEqual(result['runtime'], {'sdk': '1.2.1', 'sprig': '1.0.1', 'firebase': '1.0.0'})
-        self.assertEqual(result['package'], 'sprig')
+    def test_minor_versions_and_unsupported_packages(self):
+        write_consumer(self.folder, {'target': 'T', 'platforms': ['iOS 15.4']}, URL, '1.0.0')
+        self.assertIn('platforms: [.iOS(.v15_4)]', (self.folder / 'Package.swift').read_text())
+        with self.assertRaisesRegex(ValueError, 'supports none'):
+            write_consumer(self.folder, {'target': 'T', 'platforms': ['tvOS 15']}, URL, '1.0.0')
+
+
+class VerifyTests(unittest.TestCase):
+    """verify() with xcodebuild replaced by a fake that writes Package.resolved like xcodebuild does."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.destination = Path(temp.name) / 'evidence'
+
+    def verify(self, key, version, pinned=None):
+        built = []
+
+        def build(folder, platform, state, env):
+            built.append(platform)
+            self.assertNotIn('GH_TOKEN', env)
+            pins = {'experimental-rudder-sdk-swift': '1.5.0', PACKAGES[key]['repository']: pinned or version}
+            (folder / 'Package.resolved').write_text(json.dumps(
+                {'pins': [{'identity': k, 'state': {'version': v}} for k, v in pins.items()], 'version': 2}))
+
+        with patch.object(verify_public_customer, 'build', side_effect=build):
+            return verify_public_customer.verify(key, version, self.destination), built
+
+    def test_each_package_builds_its_checked_platforms(self):
+        for key, expected in (('sprig', ['iOS']), ('firebase', ['iOS', 'macOS']), ('swift-sdk', ['iOS', 'macOS'])):
+            with self.subTest(key):
+                result, built = self.verify(key, '1.5.0')
+                self.assertEqual(built, expected)
+                self.assertEqual(result['platforms'], expected)
+
+    def test_evidence(self):
+        result, _ = self.verify('sprig', '1.0.2')
         saved = json.loads((self.destination / 'customer-result.json').read_text())
-        self.assertEqual(saved['version'], '1.0.1')
-        self.assertTrue((self.destination / 'Xcode-Package.resolved').exists())
+        self.assertEqual(saved, result)
+        self.assertEqual(saved['status'], 'passed')
+        self.assertEqual(saved['transport'], 'anonymous-public-git')
+        self.assertEqual(saved['resolved'], {'experimental-integration-swift-sprig': '1.0.2',
+                                             'experimental-rudder-sdk-swift': '1.5.0'})
+        self.assertIn('pins', json.loads((self.destination / 'Package.resolved').read_text()))
 
-    def test_sdk_upgrade(self):
-        self.assertEqual(self.verify('swift-sdk', '1.4.1')['runtime'], {'sdk': '1.4.1', 'sprig': '1.0.0', 'firebase': '1.0.0'})
-
-    def test_local_consumer_is_copied_not_modified(self):
-        self.verify('firebase', '1.1.3')
-        self.assertEqual(json.loads((self.consumer / 'dependencies.json').read_text())['firebase']['version'], '1.0.0')
+    def test_wrong_pin_is_refused(self):
+        with self.assertRaisesRegex(ValueError, 'resolved to 1.0.1, expected 1.0.2'):
+            self.verify('sprig', '1.0.2', pinned='1.0.1')
+        self.assertFalse((self.destination / 'customer-result.json').exists())
 
 
 if __name__ == '__main__':

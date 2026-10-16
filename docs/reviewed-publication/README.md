@@ -17,7 +17,7 @@ The normal Actions token remains Contents read. Production repositories are not 
 8. Verify the exact merge commit against its stored provenance.
 9. Create the plain version tag at that verified merge commit.
 10. Create the public GitHub Release.
-11. Test an anonymous customer upgrade with SwiftPM and an iOS simulator build.
+11. Test an anonymous customer install with a generated SwiftPM package built for iOS Simulator and macOS.
 
 Step 7 is manual. **Merged a bot PR? Run Tag & Release Packages.** It has no inputs and scans all packages. The 15-minute schedule was removed on 2026-10-08 because it failed on every run.
 Bot commits are authored as `rudderstack-github-actions[bot]` with the App's noreply email; `publish.yml` looks up the bot user id at runtime and the publisher refuses any other identity.
@@ -65,10 +65,9 @@ A failed customer build fails the workflow, while publication evidence records a
 Rerun that failed publisher job or dispatch `publish.yml` with the original source SHA and version to repeat customer verification.
 Do not move a public tag to repair a customer failure.
 
-The anonymous customer check clones the public consumer on `main` into a disposable directory.
-It selects the newly published package version and raises the SDK selection only when the declared minimum requires that change.
-It records the consumer commit, runtime versions, public lockfiles, and iOS build result.
-It does not push a consumer upgrade commit. A persistent example-app upgrade remains a separate reviewed PR.
+The anonymous customer check generates a disposable SwiftPM package that depends on the published version exactly and imports its target.
+xcodebuild builds it on iOS Simulator and macOS where the package supports them; tvOS and watchOS are not checked.
+It records the built platforms and the resolved `Package.resolved` pins.
 
 ## Takeover, bootstrap and anchors
 

@@ -28,12 +28,12 @@ Remote execution is gated by `EXPERIMENTAL_RELEASES_ENABLED`. Hosted permission 
 ## Run the complete local rehearsal
 
 Requirements: macOS, Xcode, Swift 5.9 or later, Python 3.9 or later, and Git. No network or GitHub access is needed.
-`--ios` also builds the consumer template's iOS app; it needs an iOS 16 or later simulator runtime and a sibling checkout named `experimental-swift-example-consumer-app` (or `--consumer-template <path>`). No signing account is needed.
+`--ios` also builds the customer check package (`verify_public_customer.py`) with xcodebuild for iOS Simulator and macOS; it needs the iOS Simulator platform installed in Xcode. No signing account is needed.
 
 ```sh
 python3 -m unittest discover -s Tests -p 'test_*.py'
 python3 scripts/rehearse.py          # about 4 minutes; --quick skips the xcodebuild platform builds
-python3 scripts/rehearse.py --ios    # also the iOS Simulator consumer
+python3 scripts/rehearse.py --ios    # also the xcodebuild customer check
 ```
 
 Each run copies `Tests/Fixtures/demo` into a throwaway monorepo under a new `.lab/<timestamp>/` folder (`.lab/latest.json` points to it; earlier runs are never reset), creates one local bare "public" repository per allowlisted package (SDK and Firebase README-only, Sprig with foreign files, `.github/workflows` and tag `0.1.1`), and runs the real `publication_queue.py` and `publish.py` code paths step by step. Each step stops the run with its name on the first failed check; `evidence.json` records every Tag & Release Packages result, job result and check.
@@ -150,13 +150,9 @@ See [REPOSITORY-REQUEST.md](REPOSITORY-REQUEST.md) for the exact provisioning re
 
 ## Customer path
 
-The independent consumer installs the three public package URLs with exact versions.
-The macOS command-line demo configures `RudderStackAnalytics` with the Firebase integration (Sprig is iOS only).
-The iOS app links all three products. Versions are checked through `Package.resolved` pins, since the SDKs keep version constants internal.
-Use the consumer's `scripts/dependencies.py --set sprig=1.0.1 --set sdk=1.2.1` (one `--set` per package, in the consumer's own keys; `verify_public_customer.py` maps package keys to them by repository URL) to prepare an upgrade.
-Review the generated manifests and `Package.resolved` before committing a public consumer upgrade.
-After a publication, `scripts/verify_public_customer.py <package> <version> <evidence-dir>` clones the consumer's `main` anonymously and runs that upgrade with an iOS Simulator build.
-Add `--consumer <checkout>` to test an unmerged consumer change locally; packages still resolve from the public URLs.
+After a publication, `scripts/verify_public_customer.py <package> <version> <evidence-dir>` generates a throwaway SwiftPM package that depends on the public URL at that exact version and imports the package's target.
+It builds it anonymously with xcodebuild on iOS Simulator and macOS, each only where the package declares the platform (Sprig: iOS only); tvOS and watchOS are not checked.
+Versions are checked through the `Package.resolved` pin, since the SDKs keep version constants internal; `customer-result.json` and `Package.resolved` are the evidence.
 
 ## Boundaries still to prove remotely
 
