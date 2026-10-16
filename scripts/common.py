@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 KEY = re.compile(r"[a-z][a-z0-9-]*\Z")
 REPOSITORY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
 SOURCE_NAME = "experimental-swift-monorepo"
-CONSUMER_NAME = "experimental-swift-example-consumer-app"
 OWNER = "rudderlabs"
 RELEASE_BRANCH = "main"
 SDK = "swift-sdk"  # the core SDK's package key; integrations depend on it
