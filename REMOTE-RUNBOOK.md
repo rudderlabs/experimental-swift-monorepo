@@ -96,7 +96,7 @@ Use disposable refs for destructive failure tests. Preserve protected branches a
 15. Confirm the publisher App cannot address production repositories.
 
 A workflow rerun may have no new Release Please outputs. Merged a bot PR? Run Tag & Release Packages (manual, no inputs, scans all packages). Manual publisher dispatch with the original SHA and version is also available.
-Existing public repositories are taken over once: remove `.github/workflows` by a person's PR, then dispatch `publish.yml` with `mode=takeover` at the existing tag (no tag is created). Imported packages start from a plain anchor tag created by `anchor-package.yml`.
+Existing public repositories are taken over once: remove `.github/workflows` by a person's PR, then dispatch `publish.yml` with `mode=takeover` at the existing tag (no tag is created). Imported packages start from a plain anchor tag created by **Set Current Release Version** (`anchor-package.yml`).
 Never move an existing version tag. Keep drift failures for inspection; repair through a reviewed incident decision.
 The three repositories are not one transaction. A completed SDK release can remain available if an integration later fails.
 The repair path publishes the remaining integration from the same approved source.

@@ -78,6 +78,7 @@ Not covered: GitHub Actions, App permissions, rulesets, environments, Release Pl
 | `scripts/publish.py` | Build validation, immutable tag publication, drift check, recovery; `--mode` normal, takeover or bootstrap |
 | `scripts/reviewed_publication.py` | Bot PRs, takeover and bootstrap checks, merged-version verification from stored provenance |
 | `scripts/release_notes.py` | Release and publish-PR notes from the package CHANGELOG.md section, in the standalone repositories' format |
+| `scripts/discard_version.py` | Abandon Unpublished Version: discards a version without a public tag (public PRs, monorepo rollback PR, Release and tag) so its number is released again |
 | `scripts/publication_queue.py` | Tag & Release Packages queue: reports and skips a broken item, never rebuilds an open bot PR |
 | `scripts/anchor.py` | Validates an anchor tag request for `anchor-package.yml` |
 | `scripts/release_plan.py` | Affected package selection and reviewed shared-source markers |
@@ -140,7 +141,7 @@ The manual workflow is also the recovery entry point if Release Please outputs a
 **Merged a bot PR? Run Tag & Release Packages** (`complete-publication.yml`, Actions → Run workflow, no inputs): every run scans all packages, tags merged versions and creates their Releases. A broken item is reported and skipped; the others still complete. An open bot PR stays `awaiting_review` and is never rebuilt.
 Package states: `awaiting_review`, `awaiting_dependency`, `awaiting_takeover`, `published`, `incomplete`.
 A public repository without `.publication.json` waits as `awaiting_takeover` (other packages continue) until a person removes `.github/workflows` by PR and dispatches `publish.yml` with `mode=takeover`: one bot PR, no tag, `Sources/` byte-identical to the existing tag and `Package.swift` semantically equal. A README-only repository gets a bootstrap bot PR automatically (`mode=bootstrap` forces it).
-`anchor-package.yml` (manual: package, version, main SHA) creates a plain `<component>-<version>` tag and no Release, so nothing is queued or published.
+**Set Current Release Version** (`anchor-package.yml`; manual: package, version, main SHA) creates a plain `<component>-<version>` tag and no Release, so nothing is queued or published.
 Every export adds a generated CONTRIBUTING.md, `.github/CODEOWNERS` (`* @rudderlabs/sdk_team`) and a README block that welcome issues and pull requests in the public repository (maintainers sync merged ones back); `.publication.json` records a `transform` per file. No workflow file is ever exported.
 Bot commits use the App identity `rudderstack-github-actions[bot]`; a merged version is verified against its own stored `.publication.json`, so Tag & Release Packages survives exporter changes.
 
