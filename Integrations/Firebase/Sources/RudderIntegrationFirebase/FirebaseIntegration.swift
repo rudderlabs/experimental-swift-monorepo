@@ -77,7 +77,7 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
     public func identify(payload: IdentifyEvent) {
         // Set Firebase user ID if present
         if let userId = payload.userId, !FirebaseUtils.isEmpty(userId) {
-            LoggerAnalytics.debug("FirebaseIntegration: Setting userId to firebase")
+            LoggerAnalytics.debug("FirebaseIntegration: Setting userId to Firebase")
             self.analyticsAdapter.setUserID(userId)
         }
 
