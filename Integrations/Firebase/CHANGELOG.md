@@ -1,12 +1,5 @@
 # Changelog
 
-## [1.1.7](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-firebase-1.1.6...integration-firebase-1.1.7) (2026-10-19)
-
-
-### Bug Fixes
-
-* **firebase:** align the core initialized log with its skip message ([#62](https://github.com/rudderlabs/experimental-swift-monorepo/issues/62)) ([1fab780](https://github.com/rudderlabs/experimental-swift-monorepo/commit/1fab78020d2bde7119ab22e2cbb6d84adb5fdb2e))
-
 ## [1.1.6](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-firebase-1.1.5...integration-firebase-1.1.6) (2026-10-19)
 
 
