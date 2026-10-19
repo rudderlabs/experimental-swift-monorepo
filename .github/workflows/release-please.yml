@@ -1,25 +1,19 @@
 name: Release Please
-# main and maintenance lines (release/<key>-X.Y.x, see scripts/maintenance_branch.py). A push runs the workflow file
-# of the pushed branch: a maintenance branch cut from a tag older than this file has none, so dispatch this workflow
-# on main with `branch` after each merge there.
+# main and maintenance lines (release/<key>-X.Y.x, see scripts/maintenance_branch.py). A push or a manual run
+# ("Use workflow from") releases the branch it runs on; any other branch is refused.
 on:
   push:
     branches: [main, 'release/*-*.*.x']
   workflow_dispatch:
-    inputs:
-      branch:
-        description: Maintenance branch to release, e.g. release/<package>-1.4.x (run from main); leave empty for main
-        type: string
-        default: ''
 permissions:
   contents: read
 concurrency:
   # One group per target branch: a queued main run never replaces a queued maintenance run.
-  group: experimental-release-please-${{ inputs.branch || github.ref_name }}
+  group: experimental-release-please-${{ github.ref_name }}
   cancel-in-progress: false
 jobs:
   intent:
-    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && (github.ref == 'refs/heads/main' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')))
+    if: github.repository == 'rudderlabs/experimental-swift-monorepo' && vars.EXPERIMENTAL_RELEASES_ENABLED == 'true' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
     runs-on: ubuntu-latest
     environment: experimental-spm-release
     outputs:
@@ -37,9 +31,7 @@ jobs:
           persist-credentials: false
       - name: Resolve the target branch (main or release/<key>-X.Y.x)
         id: target
-        env:
-          BRANCH: ${{ inputs.branch }}
-        run: python3 scripts/maintenance_branch.py target --ref "$GITHUB_REF_NAME" --branch "$BRANCH"
+        run: python3 scripts/maintenance_branch.py target --ref "$GITHUB_REF_NAME"
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         id: token
         with:

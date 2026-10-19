@@ -59,16 +59,13 @@ def publication_base(root, key, version):
     return public_base(source_line(root, key, git(root, 'rev-parse', f'refs/tags/{tag}^{{commit}}'), version), version)
 
 
-def target(ref, branch=''):
-    """The Release Please target: the pushed branch, or `branch` when dispatched on main."""
-    if branch and ref != RELEASE_BRANCH:
-        raise ValueError(f'Dispatch with a branch input on {RELEASE_BRANCH} only')
-    name = branch or ref
-    if name != RELEASE_BRANCH:
-        match = BRANCH.fullmatch(name)
+def target(ref):
+    """The Release Please target: the branch the workflow runs on, main or a maintenance line."""
+    if ref != RELEASE_BRANCH:
+        match = BRANCH.fullmatch(ref)
         if not match or match[1] not in inventory():
-            raise ValueError(f'Not {RELEASE_BRANCH} or a maintenance branch release/<key>-X.Y.x: {name}')
-    return name
+            raise ValueError(f'Not {RELEASE_BRANCH} or a maintenance branch release/<key>-X.Y.x: {ref}')
+    return ref
 
 
 def maintenance_config(config, path):
@@ -126,11 +123,10 @@ if __name__ == '__main__':
     start.add_argument('--dry-run', action='store_true')
     resolve = commands.add_parser('target', help='validate the Release Please target branch')
     resolve.add_argument('--ref', required=True)
-    resolve.add_argument('--branch', default='')
     args = parser.parse_args()
     try:
         result = create(args.package, args.version, dry_run=args.dry_run) if args.command == 'create' \
-            else {'branch': target(args.ref, args.branch)}
+            else {'branch': target(args.ref)}
     except FAILURES as error:
         raise SystemExit(f'::error::{error}')
     if os.environ.get('GITHUB_OUTPUT'):
