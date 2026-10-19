@@ -62,8 +62,7 @@ class InventoryTests(unittest.TestCase):
     def test_new_package_needs_only_inventory_and_allowlist_entries(self):
         self.add_zzz()
         self.assertEqual(stale(self.root), [".github/ISSUE_TEMPLATE/bug_report.yml",
-                                            ".github/ISSUE_TEMPLATE/feature_request.yml",
-                                            ".github/labeler.yml", ".github/labels.json"])
+                                            ".github/ISSUE_TEMPLATE/feature_request.yml"])
         write(self.root)
         self.assertEqual(problems(self.root), [])
         outputs = {}
@@ -73,8 +72,6 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(plan["sdk"], {"package": "swift-sdk", "version": "0.2.0", "sha": SHA})
         self.assertEqual(plan["integrations"], [{"package": "zzz", "version": "1.0.0", "sha": SHA}])
         self.assertIn('"zzz"', (self.root / ".github/ISSUE_TEMPLATE/bug_report.yml").read_text())
-        self.assertIn('"Integrations/Zzz/**"', (self.root / ".github/labeler.yml").read_text())
-        self.assertIn("pkg:zzz", [label["name"] for label in load(self.root / ".github/labels.json")])
         self.edit("allowlist.json", lambda d: d["repositories"].pop("zzz"))
         self.assertIn("zzz: repository 'experimental-integration-swift-zzz' differs from allowlist None",
                       problems(self.root))
@@ -94,12 +91,12 @@ class InventoryTests(unittest.TestCase):
                           "firebase": "RudderStack Firebase Integration"})
 
     def test_stale_generated_file_fails(self):
-        labels = self.root / ".github/labels.json"
-        labels.write_text(labels.read_text().replace("pkg:sprig", "pkg:old"))
+        form = self.root / ".github/ISSUE_TEMPLATE/bug_report.yml"
+        form.write_text(form.read_text().replace('"sprig"', '"old"'))
         (self.root / ".github/ISSUE_TEMPLATE/config.yml").unlink()
         self.assertEqual(problems(self.root), [
-            "Stale generated file (run python3 scripts/generate_github.py): .github/ISSUE_TEMPLATE/config.yml",
-            "Stale generated file (run python3 scripts/generate_github.py): .github/labels.json"])
+            "Stale generated file (run python3 scripts/generate_github.py): .github/ISSUE_TEMPLATE/bug_report.yml",
+            "Stale generated file (run python3 scripts/generate_github.py): .github/ISSUE_TEMPLATE/config.yml"])
         write(self.root)
         self.assertEqual(problems(self.root), [])
 
@@ -107,7 +104,7 @@ class InventoryTests(unittest.TestCase):
         shutil.copytree(ROOT / ".github/workflows", self.root / ".github/workflows")
         write(self.root)
         self.add_zzz()
-        self.assertEqual(stale(self.root)[4:], [f".github/workflows/{name}" for name in DROPDOWNS])
+        self.assertEqual(stale(self.root)[2:], [f".github/workflows/{name}" for name in DROPDOWNS])
         write(self.root)
         self.assertEqual(problems(self.root), [])
         for name in DROPDOWNS:
@@ -142,7 +139,6 @@ class InventoryTests(unittest.TestCase):
         self.edit("packages.json", lambda d: d["packages"].clear())
         files = generate(self.root)
         self.assertIn(f"      options:\n        - {json.dumps(OTHER)}\n", files[".github/ISSUE_TEMPLATE/bug_report.yml"])
-        self.assertEqual([l["name"] for l in json.loads(files[".github/labels.json"])], ["pkg:tooling"])
 
     def test_duplicate_component_or_path_fails(self):
         self.edit("packages.json", lambda d: d["packages"]["firebase"].update(

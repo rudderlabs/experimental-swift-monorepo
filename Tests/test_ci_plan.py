@@ -98,7 +98,7 @@ class CiPlanTests(unittest.TestCase):
                          {"test": ["sprig"], "export": self.every, "policy": True})
 
     def test_policy_runs_only_for_tooling_and_policy_inputs(self):
-        for path in ["scripts/dependabot_sync.py", "release/texts.json", "Tests/test_anchor.py", ".github/labeler.yml",
+        for path in ["scripts/dependabot_sync.py", "release/texts.json", "Tests/test_anchor.py", ".github/ISSUE_TEMPLATE/config.yml",
                      "Makefile", "Package.swift", "Package.resolved", ".release-please-manifest.json",
                      "release-please-config.json", "Integrations/Sprig/dependency-requirements.json",
                      "Integrations/Sprig/shared-source.json", "Shared/DemoShared/DemoNormalizer.swift"]:
@@ -135,8 +135,8 @@ class CiPlanTests(unittest.TestCase):
     def test_workflow_plans_a_pr_from_its_base_and_a_push_from_its_previous_commit(self):
         self.assertEqual(ci_plan(None, self.root), {"test": self.every, "export": self.every, "policy": True})
         block = WORKFLOW.split("\n  packages:\n", 1)[1].split("\n  policy:\n", 1)[0]
-        self.assertIn('python3 scripts/ci_plan.py --base "$BASE"', block)
-        self.assertIn("BASE: ${{ github.event.pull_request.base.sha }}", block)
+        self.assertIn("python3 scripts/ci_plan.py --base HEAD^1", block)
+        self.assertNotIn("pull_request.base.sha", block)  # stale once the base branch moves (PR #60 tested Firebase)
         self.assertIn('python3 scripts/ci_plan.py --before "$BEFORE"', block)
         self.assertIn("BEFORE: ${{ github.event.before }}", block)
         self.assertIn("fetch-depth: 0", block)

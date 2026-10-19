@@ -73,7 +73,7 @@ Not covered: GitHub Actions, App permissions, rulesets, environments, Release Pl
 | `scripts/import_package.py` | `make import-integration`: imports a repository at a tag, or at a later non-code-only `REF` (history or snapshot), without a Release Please entry |
 | `scripts/dependabot_sync.py` | Releasable title for a Dependabot PR whose markers changed (`dependabot-sync.yml`) |
 | `scripts/check_inventory.py` | CI check: package list, allowlist, Release Please entries, generated files and action SHA pins agree |
-| `scripts/generate_github.py` | Regenerates issue forms, `labeler.yml`, `labels.json` and the `package` dropdowns of manual workflows from the package list (`--check` in CI) |
+| `scripts/generate_github.py` | Regenerates issue forms and the `package` dropdowns of manual workflows from the package list (`--check` in CI) |
 | `scripts/project.py` | Graph inspection and deterministic standalone export |
 | `scripts/publish.py` | Build validation, immutable tag publication, drift check, recovery; `--mode` normal, takeover or bootstrap |
 | `scripts/reviewed_publication.py` | Bot PRs, takeover and bootstrap checks, merged-version verification from stored provenance |

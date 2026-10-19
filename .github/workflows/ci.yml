@@ -36,13 +36,14 @@ jobs:
       - id: plan
         run: |
           if [ "$EVENT" = pull_request ]; then
-            python3 scripts/ci_plan.py --base "$BASE"
+            # The checkout is the PR merged into the current base branch: its first parent is that base, so
+            # changes merged there after the PR was opened are not counted as the PR's.
+            python3 scripts/ci_plan.py --base HEAD^1
           else
             python3 scripts/ci_plan.py --before "$BEFORE"
           fi
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
           BEFORE: ${{ github.event.before }}
 
   policy:

@@ -88,7 +88,7 @@ Outside contributions come to this monorepo only: issues and pull requests for e
 ### Release one package alone
 
 Release Please opens one release PR per package (`"separate-pull-requests": true` in `release-please-config.json`), for example `chore(release): swift-sdk 1.4.2` on branch `release-please--branches--main--components--swift-sdk` and `chore(release): integration-sprig 1.0.2` on `release-please--branches--main--components--integration-sprig`. The title comes from `pull-request-title-pattern`, matching rudder-sdk-swift's `chore(release): …` style. Each PR holds only its package's version files, CHANGELOG and manifest line.
-Merge only the PR of the package you want to release; the others stay open and are rebuilt on the next push to `main`. `release-please.yml` then plans only the merged package: merging only the Sprig PR runs one `publish (sprig)` leg and skips `publish (swift-sdk)`. Merging the SDK PR releases only the SDK; merge each integration's own PR when it should follow.
+Merge only the PR of the package you want to release; the others stay open and are rebuilt on the next push to `main` (`"always-update": true`: every open release PR is rebuilt from the current `main`, so the shared manifest line never conflicts after another release PR merges). `release-please.yml` then plans only the merged package: merging only the Sprig PR runs one `publish (sprig)` leg and skips `publish (swift-sdk)`. Merging the SDK PR releases only the SDK; merge each integration's own PR when it should follow.
 An integration whose `sdkMinimum` needs an unreleased SDK waits as `awaiting_dependency` until the SDK is published, so merge the SDK PR first in a coordinated release.
 
 ### Override the next version with Release-As
@@ -144,7 +144,7 @@ Notes:
 
 ### Core SDK key rename: `sdk` → `swift-sdk` (once, around the merge)
 
-The core SDK's package key and Release Please component are `swift-sdk`; up to 1.5.0 both were `sdk`. Monorepo tags become `swift-sdk-X.Y.Z`, publication PR branches `publication/swift-sdk/X.Y.Z`, the label `pkg:swift-sdk`, the jobs `test (swift-sdk)` and `publish (swift-sdk)`, the title scope `fix(swift-sdk): …`, and new maintenance branches `release/swift-sdk-X.Y.x`. The `sdk-*` tags stay where they are. The public repository, its plain `X.Y.Z` tags and its Releases do not change; its `.publication.json` says `"package": "sdk"` until the next publication replaces it. The example consumer keeps its own `sdk` key: the customer check matches it by repository URL.
+The core SDK's package key and Release Please component are `swift-sdk`; up to 1.5.0 both were `sdk`. Monorepo tags become `swift-sdk-X.Y.Z`, publication PR branches `publication/swift-sdk/X.Y.Z`, the jobs `test (swift-sdk)` and `publish (swift-sdk)`, the title scope `fix(swift-sdk): …`, and new maintenance branches `release/swift-sdk-X.Y.x`. The `sdk-*` tags stay where they are. The public repository, its plain `X.Y.Z` tags and its Releases do not change; its `.publication.json` says `"package": "sdk"` until the next publication replaces it.
 
 Release Please finds a package's last release as the GitHub Release or tag `<component>-<manifest version>`. After the rename that is `swift-sdk-1.5.0`, which does not exist yet; without it Release Please would build the next SDK changelog from the whole history. An anchor tag fixes this:
 
@@ -155,7 +155,6 @@ Release Please finds a package's last release as the GitHub Release or tag `<com
 5. The next SDK fix (`fix(swift-sdk): …`, changing `Packages/RudderStackAnalytics/`) opens `chore(release): swift-sdk 1.5.1` on `release-please--branches--main--components--swift-sdk`, with only that change in the CHANGELOG and the compare link `swift-sdk-1.5.0...swift-sdk-1.5.1`. Merging it tags `swift-sdk-1.5.1` and publishes the public `1.5.1` as usual (publish PR `publication/swift-sdk/1.5.1`, then Tag & Release Packages).
 
 If an SDK release PR opened before the anchor (step 1 skipped), close it without merging; the run after the anchor builds the right one.
-Optional: rename the existing label so old issues keep it: `gh label edit "pkg:sdk" --name "pkg:swift-sdk" --description "Package swift-sdk (Packages/RudderStackAnalytics)" --repo rudderlabs/experimental-swift-monorepo`.
 
 Legacy line `release/sdk-1.4.x`: leave it as it is (no rename, no new tags; its 1.4.3 is public and nothing is pending). It keeps its own `sdk` config, so its Release Please and publish PR steps would still run from its own files, but Tag & Release Packages runs from `main` and only knows `swift-sdk-*` releases: a new `sdk-1.4.4` would never be tagged publicly. Treat the line as closed. Cut later maintenance lines from a `swift-sdk-*` tag on a commit that has the rename (1.5.1 or later), never from `swift-sdk-1.5.0`, whose commit still has the `sdk` files.
 

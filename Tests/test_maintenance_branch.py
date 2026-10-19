@@ -339,7 +339,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("  pull_request:\n    branches: [main, 'release/*-*.*.x']\n", ci)
         self.assertIn("  push:\n    branches: [main, 'release/*-*.*.x']\n", ci)
         self.assertIn("  pull_request:\n    branches: [main, 'release/*-*.*.x']\n", title)
-        self.assertIn('BASE: ${{ github.event.pull_request.base.sha }}', ci)  # the PR base, whichever branch
+        self.assertIn('python3 scripts/ci_plan.py --base HEAD^1', ci)  # the PR's current base, whichever branch
         for text in (ci, title):
             self.assertNotIn('refs/heads/main', text)
             self.assertNotIn("github.base_ref == 'main'", text)
