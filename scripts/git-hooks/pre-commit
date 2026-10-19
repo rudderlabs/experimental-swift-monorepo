@@ -71,7 +71,7 @@ if [ $((manifest + packages + allowlist + shared)) -gt 0 ]; then
     # Stage what the sync changed, plus marker and generated files that were
     # already out of date in the working tree (for example after a manual `make sync`).
     added=$( { comm -13 <(echo "$before") <(dirty)
-               dirty | grep -E '(^|/)(dependency-requirements|shared-source)\.json$|^\.github/(ISSUE_TEMPLATE/|labeler\.yml$|labels\.json$)'
+               dirty | grep -E '(^|/)(dependency-requirements|shared-source)\.json$|^\.github/ISSUE_TEMPLATE/'
              } | grep . | sort -u)
     if [ -n "$added" ]; then
         echo "$added" | tr '\n' '\0' | xargs -0 git add -A -- || exit 1

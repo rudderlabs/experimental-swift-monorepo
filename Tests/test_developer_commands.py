@@ -158,7 +158,6 @@ class ScaffoldTests(unittest.TestCase):
             target: f"Integrations/Firebase/Sources/{target}",
             f"{target}Tests": f"Integrations/Firebase/Tests/{target}Tests"})
         self.assertEqual([p["platformName"] for p in data["platforms"]], ["ios", "tvos"])
-        self.assertIn("pkg:firebase", [label["name"] for label in load(root / ".github/labels.json")])
         self.assertIn('"firebase"', (root / ".github/ISSUE_TEMPLATE/bug_report.yml").read_text())
         checked = make(root, "check")
         self.assertEqual(checked.returncode, 0, checked.stderr)
