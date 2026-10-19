@@ -54,7 +54,7 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
 
         if !appAdapter.isConfigured {
             appAdapter.configure()
-            LoggerAnalytics.debug("FirebaseIntegration: Firebase is initialized")
+            LoggerAnalytics.debug("FirebaseIntegration: Firebase core initialized")
         } else {
             LoggerAnalytics.debug("FirebaseIntegration: Firebase core already initialized - skipping Firebase configuration")
         }
