@@ -123,12 +123,9 @@ class SourceLineTests(unittest.TestCase):
     def test_release_please_target_branch(self):
         self.assertEqual(target('main'), 'main')
         self.assertEqual(target('release/swift-sdk-1.4.x'), 'release/swift-sdk-1.4.x')
-        self.assertEqual(target('main', 'release/sprig-1.0.x'), 'release/sprig-1.0.x')
-        for ref, branch, message in (('release/swift-sdk-1.4.x', 'release/swift-sdk-1.4.x', 'on main only'),
-                                     ('release/unknown-1.0.x', '', 'Not main'), ('feat/x', '', 'Not main'),
-                                     ('release/swift-sdk-1.4', '', 'Not main'), ('main', 'release/swift-sdk-01.4.x', 'Not main')):
-            with self.subTest(ref=ref, branch=branch), self.assertRaisesRegex(ValueError, message):
-                target(ref, branch)
+        for ref in ('release/unknown-1.0.x', 'feat/x', 'release/swift-sdk-1.4', 'release/swift-sdk-01.4.x'):
+            with self.subTest(ref=ref), self.assertRaisesRegex(ValueError, 'Not main'):
+                target(ref)
         # The push filter of release-please.yml and the pre-push hook both accept every maintenance branch.
         hook = (ROOT / 'scripts/git-hooks/pre-push').read_text()
         self.assertIn('|hotfix|release)\\/[a-zA-Z0-9._-]+$', hook)
@@ -331,9 +328,9 @@ class WorkflowTests(unittest.TestCase):
         text = self.read('release-please.yml')
         self.assertIn("    branches: [main, 'release/*-*.*.x']\n", text)
         self.assertIn('          target-branch: ${{ steps.target.outputs.branch }}\n', text)
-        self.assertIn('run: python3 scripts/maintenance_branch.py target --ref "$GITHUB_REF_NAME" --branch "$BRANCH"',
-                      text)
-        self.assertIn('  group: experimental-release-please-${{ inputs.branch || github.ref_name }}\n', text)
+        self.assertIn('run: python3 scripts/maintenance_branch.py target --ref "$GITHUB_REF_NAME"\n', text)
+        self.assertIn('  group: experimental-release-please-${{ github.ref_name }}\n', text)
+        self.assertNotIn('inputs.branch', text)  # a manual run releases the branch picked in "Use workflow from"
         self.assertNotIn('target-branch: main', text)
 
     def test_pr_checks_run_on_main_and_maintenance_branches(self):
