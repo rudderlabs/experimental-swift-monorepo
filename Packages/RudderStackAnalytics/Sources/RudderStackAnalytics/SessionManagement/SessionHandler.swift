@@ -39,7 +39,7 @@ final class SessionHandler: TypeIdentifiable {
             self.checkAndStartSessionOnLaunch()
             self.attachSessionTrackingObservers()
         } else if !isSessionManual {
-            analytics.logger.debug(log: "\(className): Ending session — both manual and automatic session tracking is disabled")
+            analytics.logger.debug(log: "\(className): Ending session — both manual and automatic session tracking are disabled")
             self.endSession()
         }
     }
