@@ -97,7 +97,7 @@ public class SprigIntegration: IntegrationPlugin, StandardIntegration {
             SprigUtils.setSprigAttributes(traitsDictionary, adapter: sprigAdapter)
         }
 
-        LoggerAnalytics.debug("SprigIntegration: Identify event processed")
+        LoggerAnalytics.debug("SprigIntegration: Identify event processed.")
     }
 
     public func track(payload: TrackEvent) {
