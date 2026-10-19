@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-sprig-1.0.2...integration-sprig-1.0.3) (2026-10-19)
+
+
+### Bug Fixes
+
+* **sprig:** end the identify log with a full stop ([#58](https://github.com/rudderlabs/experimental-swift-monorepo/issues/58)) ([47aa587](https://github.com/rudderlabs/experimental-swift-monorepo/commit/47aa587af2fbd9a030c63002ccc29082245bd3c0))
+
 ## [1.0.2](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-sprig-1.0.1...integration-sprig-1.0.2) (2026-10-14)
 
 
