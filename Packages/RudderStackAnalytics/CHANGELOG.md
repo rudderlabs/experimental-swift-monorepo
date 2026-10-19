@@ -23,6 +23,13 @@
 
 
 
+## [1.5.1](https://github.com/rudderlabs/experimental-swift-monorepo/compare/swift-sdk-1.5.0...swift-sdk-1.5.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* **swift-sdk:** correct the grammar of the session end log ([#56](https://github.com/rudderlabs/experimental-swift-monorepo/issues/56)) ([9452357](https://github.com/rudderlabs/experimental-swift-monorepo/commit/945235716c9b311c9293e329f2b35c9b0096b4ed))
+
 ## [1.5.0](https://github.com/rudderlabs/experimental-swift-monorepo/compare/sdk-1.4.2...sdk-1.5.0) (2026-10-14)
 
 
