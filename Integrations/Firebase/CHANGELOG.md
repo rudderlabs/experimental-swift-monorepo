@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.6](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-firebase-1.1.5...integration-firebase-1.1.6) (2026-10-19)
+
+
+### Bug Fixes
+
+* **firebase:** capitalise Firebase in the user ID log ([#59](https://github.com/rudderlabs/experimental-swift-monorepo/issues/59)) ([32fbf9c](https://github.com/rudderlabs/experimental-swift-monorepo/commit/32fbf9c4b84f8a6aea565b4f90d24569bfad2d2e))
+
 ## [1.1.5](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-firebase-1.1.4...integration-firebase-1.1.5) (2026-10-14)
 
 
