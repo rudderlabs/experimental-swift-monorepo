@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.8](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-firebase-1.1.7...integration-firebase-1.1.8) (2026-10-20)
+
+
+### Bug Fixes
+
+* **firebase:** use a comma in the core already initialized log ([#68](https://github.com/rudderlabs/experimental-swift-monorepo/issues/68)) ([b18036a](https://github.com/rudderlabs/experimental-swift-monorepo/commit/b18036a667f471f942aba20cc7bcab59d8a428f2))
+
 ## [1.1.7](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-firebase-1.1.6...integration-firebase-1.1.7) (2026-10-19)
 
 
