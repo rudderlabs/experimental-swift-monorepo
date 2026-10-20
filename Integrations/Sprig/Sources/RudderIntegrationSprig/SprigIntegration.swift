@@ -80,7 +80,7 @@ public class SprigIntegration: IntegrationPlugin, StandardIntegration {
         }
         viewController = nil
         sprigAdapter.sprigInstance = nil
-        LoggerAnalytics.debug("SprigIntegration: teardown completed.")
+        LoggerAnalytics.debug("SprigIntegration: Teardown completed.")
     }
 
     // MARK: - EventPlugin
