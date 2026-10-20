@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-sprig-1.0.3...integration-sprig-1.0.4) (2026-10-20)
+
+
+### Bug Fixes
+
+* **sprig:** capitalise the teardown log ([#67](https://github.com/rudderlabs/experimental-swift-monorepo/issues/67)) ([dddf411](https://github.com/rudderlabs/experimental-swift-monorepo/commit/dddf411ed48d574785ef76fa0a819588e7eaf8dc))
+
 ## [1.0.3](https://github.com/rudderlabs/experimental-swift-monorepo/compare/integration-sprig-1.0.2...integration-sprig-1.0.3) (2026-10-19)
 
 
