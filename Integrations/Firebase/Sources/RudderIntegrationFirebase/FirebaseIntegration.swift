@@ -56,7 +56,7 @@ public class FirebaseIntegration: IntegrationPlugin, StandardIntegration {
             appAdapter.configure()
             LoggerAnalytics.debug("FirebaseIntegration: Firebase core initialized")
         } else {
-            LoggerAnalytics.debug("FirebaseIntegration: Firebase core already initialized - skipping Firebase configuration")
+            LoggerAnalytics.debug("FirebaseIntegration: Firebase core already initialized, skipping Firebase configuration")
         }
     }
 
