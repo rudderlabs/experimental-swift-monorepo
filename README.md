@@ -93,7 +93,7 @@ Not covered: GitHub Actions, App permissions, rulesets, environments, Release Pl
 4. Review the affected integration paths in the commit.
 5. Let Release Please prepare versions, Swift version constants, and changelogs after remote enablement.
 
-Commit messages and PR titles: `<type>(<optional scope>)<optional !>: <description>` with types `feat` `fix` `refactor` `perf` `style` `test` `docs` `chore` `build` `ci` `revert`, a description that starts lowercase and has no trailing period, at most 100 characters (`Merge …` and `Revert "…"` are allowed). The `commit-msg` hook and the `pr-title` check apply the same rules. The scope is cosmetic: folders decide what releases, and `scope-hint` only warns when the scope names a package the PR does not touch.
+Commit messages and PR titles: `<type>(<optional scope>)<optional !>: <description>` with types `feat` `fix` `refactor` `perf` `style` `test` `docs` `chore` `build` `ci` `revert` and a description that does not start with a capital letter. The squash commit on `main` or a release branch is the PR title. The `pr-title` check fails `Merge …` and `fixup! …` titles. It passes GitHub's `Revert "<title>"` when the quoted title passes. The `commit-msg` hook adds rules: a lowercase scope, no trailing period, and at most 100 characters. It lets git's own `Merge …` and `Revert "…"` subjects through. The scope is cosmetic: folders decide what releases, and `scope-hint` only warns when the scope names a package the PR does not touch.
 
 ### PR checks
 
